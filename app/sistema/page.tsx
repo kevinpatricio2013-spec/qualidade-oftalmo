@@ -9,7 +9,7 @@ const indicadores = [
   {
     titulo: "Setores monitorados",
     valor: "24",
-    descricao: "Acompanhamento por área assistencial, administrativa e apoio.",
+    descricao: "Acompanhamento por área assistencial, administrativa e de apoio.",
   },
   {
     titulo: "Tratativas em andamento",
