@@ -1,364 +1,385 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
-
-type Perfil = {
-  id: string
-  nome: string
-  email: string
-  perfil: 'qualidade' | 'lider' | 'colaborador' | 'diretoria'
-  setor: string | null
-}
-
-type Props = {
-  perfil: Perfil
-  onLogout: () => void
-}
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type Ocorrencia = {
-  id: number
-  numero_ocorrencia: string | null
-  titulo: string
-  descricao: string | null
-  tipo_ocorrencia: string | null
-  gravidade: string | null
-  status: string | null
-  setor_origem: string | null
-  setor_destino: string | null
-  responsavel: string | null
-  data_ocorrencia: string | null
-  prazo: string | null
-  usuario_id: string | null
-}
+  id?: number;
+  titulo?: string | null;
+  descricao?: string | null;
+  setor_origem?: string | null;
+  setor_destino?: string | null;
+  tipo_ocorrencia?: string | null;
+  gravidade?: string | null;
+  status?: string | null;
+  responsavel?: string | null;
+};
 
-const setores = [
-  'Agendamento',
-  'Autorização',
-  'Centro Cirúrgico',
-  'CME',
-  'Comissões Hospitalares',
-  'Compras',
-  'Consultório Médico',
-  'Contas Médicas',
-  'Controlador de Acesso',
-  'Diretoria',
-  'Facilities',
-  'Farmácia / OPME',
-  'Faturamento',
-  'Financeiro',
-  'Fornecedores Externos',
-  'Gestão da Informação',
-  'Gestão de Pessoas',
-  'Higiene',
-  'Qualidade',
-  'Recepção',
-  'Engenharia Clínica',
-  'Pronto Atendimento',
-]
+const setoresPadrao = [
+  "Agendamento",
+  "Autorização",
+  "Centro Cirúrgico",
+  "CME",
+  "Comissões Hospitalares",
+  "Compras",
+  "Consultório Médico",
+  "Contas Médicas",
+  "Controlador de Acesso",
+  "Diretoria",
+  "Facilities",
+  "Farmácia/OPME",
+  "Faturamento",
+  "Financeiro",
+  "Fornecedores Externos",
+  "Gestão da Informação",
+  "Gestão de Pessoas",
+  "Higiene",
+  "Qualidade",
+  "Recepção",
+  "Engenharia Clínica",
+  "Pronto Atendimento",
+];
 
-const tiposOcorrencia = [
-  'Não conformidade',
-  'Evento adverso',
-  'Incidente sem dano',
-  'Quase falha',
-  'Reclamação',
-  'Oportunidade de melhoria',
-]
+export default function SistemaPage() {
+  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
 
-const gravidades = ['Leve', 'Moderada', 'Grave', 'Crítica']
+  const [form, setForm] = useState<Ocorrencia>({
+    titulo: "",
+    descricao: "",
+    setor_origem: "",
+    setor_destino: "",
+    tipo_ocorrencia: "",
+    gravidade: "Leve",
+    status: "Aberto",
+    responsavel: "",
+  });
 
-export default function SistemaPage({ perfil, onLogout }: Props) {
-  const [titulo, setTitulo] = useState('')
-  const [descricao, setDescricao] = useState('')
-  const [tipoOcorrencia, setTipoOcorrencia] = useState('')
-  const [setorOrigem, setSetorOrigem] = useState('')
-  const [setorDestino, setSetorDestino] = useState('')
-  const [gravidade, setGravidade] = useState('')
-  const [dataOcorrencia, setDataOcorrencia] = useState('')
-  const [responsavel, setResponsavel] = useState('')
-
-  const [lista, setLista] = useState<Ocorrencia[]>([])
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const [filtroTexto, setFiltroTexto] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState('')
-
-  useEffect(() => {
-    if ((perfil.perfil === 'colaborador' || perfil.perfil === 'lider') && perfil.setor) {
-      setSetorOrigem(perfil.setor)
+  async function carregarOcorrencias() {
+    if (!supabase) {
+      setErro("Supabase não configurado.");
+      setLoading(false);
+      return;
     }
-  }, [perfil])
 
-  async function buscar() {
-    setLoading(true)
+    setLoading(true);
+    setErro("");
 
     const { data, error } = await supabase
-      .from('ocorrencias')
-      .select('id, numero_ocorrencia, titulo, descricao, tipo_ocorrencia, gravidade, status, setor_origem, setor_destino, responsavel, data_ocorrencia, prazo, usuario_id')
-      .order('id', { ascending: false })
-
-    setLoading(false)
+      .from("ocorrencias")
+      .select("*")
+      .order("id", { ascending: false });
 
     if (error) {
-      alert(error.message)
-      return
+      setErro(error.message || "Não foi possível carregar as ocorrências.");
+      setOcorrencias([]);
+      setLoading(false);
+      return;
     }
 
-    setLista(data || [])
+    setOcorrencias((data as Ocorrencia[]) || []);
+    setLoading(false);
   }
 
   useEffect(() => {
-    buscar()
-  }, [])
+    carregarOcorrencias();
+  }, []);
 
-  async function salvar() {
-    if (!titulo.trim()) return alert('Preencha o título.')
-    if (!tipoOcorrencia) return alert('Selecione o tipo de ocorrência.')
-    if (!setorOrigem) return alert('Selecione o setor de origem.')
-    if (!gravidade) return alert('Selecione a gravidade.')
-    if (!dataOcorrencia) return alert('Selecione a data da ocorrência.')
+  async function salvarOcorrencia() {
+    if (!supabase) {
+      alert("Supabase não configurado.");
+      return;
+    }
 
-    setSaving(true)
+    if (!form?.titulo?.trim()) {
+      alert("Preencha o título.");
+      return;
+    }
 
-    const { error } = await supabase
-      .from('ocorrencias')
-      .insert([
-        {
-          titulo: titulo.trim(),
-          descricao: descricao.trim() || null,
-          tipo_ocorrencia: tipoOcorrencia || null,
-          setor_origem: setorOrigem || null,
-          setor_destino: setorDestino || null,
-          gravidade: gravidade || null,
-          status: 'Aberto',
-          data_ocorrencia: dataOcorrencia || null,
-          responsavel: responsavel.trim() || null,
-          usuario_id: perfil.id,
-        },
-      ])
-
-    setSaving(false)
+    const { error } = await supabase.from("ocorrencias").insert([
+      {
+        titulo: form?.titulo || null,
+        descricao: form?.descricao || null,
+        setor_origem: form?.setor_origem || null,
+        setor_destino: form?.setor_destino || null,
+        tipo_ocorrencia: form?.tipo_ocorrencia || null,
+        gravidade: form?.gravidade || null,
+        status: form?.status || null,
+        responsavel: form?.responsavel || null,
+      },
+    ]);
 
     if (error) {
-      alert(error.message)
-      return
+      alert("Não foi possível salvar: " + error.message);
+      return;
     }
 
-    setTitulo('')
-    setDescricao('')
-    setTipoOcorrencia('')
-    setSetorDestino('')
-    setGravidade('')
-    setDataOcorrencia('')
-    setResponsavel('')
+    setForm({
+      titulo: "",
+      descricao: "",
+      setor_origem: "",
+      setor_destino: "",
+      tipo_ocorrencia: "",
+      gravidade: "Leve",
+      status: "Aberto",
+      responsavel: "",
+    });
 
-    if ((perfil.perfil === 'colaborador' || perfil.perfil === 'lider') && perfil.setor) {
-      setSetorOrigem(perfil.setor)
-    } else {
-      setSetorOrigem('')
-    }
-
-    await buscar()
+    carregarOcorrencias();
   }
 
-  const listaFiltrada = useMemo(() => {
-    return lista.filter((item) => {
-      const texto = filtroTexto.toLowerCase()
+  async function excluirOcorrencia(id?: number) {
+    if (!supabase || !id) return;
 
-      const matchTexto =
-        !texto ||
-        item.numero_ocorrencia?.toLowerCase().includes(texto) ||
-        item.titulo?.toLowerCase().includes(texto) ||
-        item.descricao?.toLowerCase().includes(texto) ||
-        item.responsavel?.toLowerCase().includes(texto)
+    const confirmar = window.confirm("Deseja excluir esta ocorrência?");
+    if (!confirmar) return;
 
-      const matchStatus = !filtroStatus || item.status === filtroStatus
+    const { error } = await supabase.from("ocorrencias").delete().eq("id", id);
 
-      return matchTexto && matchStatus
-    })
-  }, [lista, filtroTexto, filtroStatus])
+    if (error) {
+      alert("Não foi possível excluir: " + error.message);
+      return;
+    }
+
+    carregarOcorrencias();
+  }
+
+  const totais = useMemo(() => {
+    const total = ocorrencias.length;
+    const abertas = ocorrencias.filter(
+      (o) => (o?.status || "").toLowerCase() === "aberto"
+    ).length;
+    const concluidas = ocorrencias.filter(
+      (o) => (o?.status || "").toLowerCase() === "concluído"
+    ).length;
+
+    return { total, abertas, concluidas };
+  }, [ocorrencias]);
 
   return (
-    <main style={{ minHeight: '100vh', background: '#f4f8fb', padding: 24, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div
-          style={{
-            marginBottom: 20,
-            padding: 24,
-            borderRadius: 20,
-            background: 'linear-gradient(135deg, #0f766e 0%, #164e63 100%)',
-            color: '#fff',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+    <main className="min-h-screen bg-slate-100 p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <div style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.9, fontWeight: 700 }}>
-                Sistema Hospitalar
-              </div>
-              <h1 style={{ margin: '8px 0 0', fontSize: 28 }}>Gestão de Ocorrências</h1>
-              <p style={{ margin: '10px 0 0' }}>
-                Usuário: <strong>{perfil.nome || perfil.email}</strong> | Perfil: <strong>{perfil.perfil}</strong>
-                {perfil.setor ? <> | Setor: <strong>{perfil.setor}</strong></> : null}
+              <h1 className="text-3xl font-black text-slate-800">
+                Gestão de Ocorrências
+              </h1>
+              <p className="mt-2 text-slate-600">
+                Sistema hospitalar para registro e acompanhamento de ocorrências.
               </p>
             </div>
 
-            <button onClick={onLogout} style={botaoSecundario}>
-              Sair
-            </button>
-          </div>
-        </div>
-
-        <div style={card}>
-          <h2>Nova ocorrência</h2>
-
-          <div style={grid}>
-            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Título" style={campo} />
-
-            <select value={tipoOcorrencia} onChange={(e) => setTipoOcorrencia(e.target.value)} style={campo}>
-              <option value="">Tipo de ocorrência</option>
-              {tiposOcorrencia.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-
-            <select
-              value={setorOrigem}
-              onChange={(e) => setSetorOrigem(e.target.value)}
-              style={campo}
-              disabled={perfil.perfil === 'colaborador' || perfil.perfil === 'lider'}
-            >
-              <option value="">Setor de origem</option>
-              {setores.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-
-            <select value={setorDestino} onChange={(e) => setSetorDestino(e.target.value)} style={campo}>
-              <option value="">Setor destino</option>
-              {setores.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-
-            <select value={gravidade} onChange={(e) => setGravidade(e.target.value)} style={campo}>
-              <option value="">Gravidade</option>
-              {gravidades.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-
-            <input type="date" value={dataOcorrencia} onChange={(e) => setDataOcorrencia(e.target.value)} style={campo} />
-            <input value={responsavel} onChange={(e) => setResponsavel(e.target.value)} placeholder="Responsável" style={campo} />
-
-            <textarea
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              placeholder="Descrição"
-              style={{ ...campo, minHeight: 110, gridColumn: '1 / -1' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-            <button onClick={salvar} disabled={saving} style={botaoPrincipal}>
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </div>
-
-        <div style={card}>
-          <h2>Filtros</h2>
-
-          <div style={grid}>
-            <input
-              value={filtroTexto}
-              onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Buscar por texto"
-              style={campo}
-            />
-
-            <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={campo}>
-              <option value="">Todos os status</option>
-              <option value="Aberto">Aberto</option>
-              <option value="Em tratativa">Em tratativa</option>
-              <option value="Concluído">Concluído</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={card}>
-          <h2>Lista de ocorrências</h2>
-
-          {loading ? (
-            <p>Carregando...</p>
-          ) : listaFiltrada.length === 0 ? (
-            <p>Nenhum registro encontrado.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: 12 }}>
-              {listaFiltrada.map((item) => (
-                <div key={item.id} style={{ border: '1px solid #dbe7ee', borderRadius: 16, padding: 16 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 6 }}>
-                    {item.numero_ocorrencia || `OCORRÊNCIA #${item.id}`}
-                  </div>
-                  <h3 style={{ marginTop: 0 }}>{item.titulo}</h3>
-                  <p><strong>Status:</strong> {item.status || '-'}</p>
-                  <p><strong>Gravidade:</strong> {item.gravidade || '-'}</p>
-                  <p><strong>Setor origem:</strong> {item.setor_origem || '-'}</p>
-                  <p><strong>Setor destino:</strong> {item.setor_destino || '-'}</p>
-                  <p><strong>Responsável:</strong> {item.responsavel || '-'}</p>
-                  <p><strong>Data:</strong> {item.data_ocorrencia || '-'}</p>
-                  <p><strong>Prazo:</strong> {item.prazo || '-'}</p>
-                  {item.descricao ? <p><strong>Descrição:</strong> {item.descricao}</p> : null}
-                </div>
-              ))}
+            <div className="flex gap-3">
+              <Link
+                href="/"
+                className="rounded-2xl border border-slate-300 px-4 py-3 font-bold text-slate-700"
+              >
+                Início
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
+              >
+                Dashboard
+              </Link>
             </div>
-          )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Resumo titulo="Total" valor={totais.total} />
+          <Resumo titulo="Em aberto" valor={totais.abertas} />
+          <Resumo titulo="Concluídas" valor={totais.concluidas} />
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-800">Nova ocorrência</h2>
+
+            <div className="mt-4 grid gap-3">
+              <input
+                className={campo}
+                value={form?.titulo || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, titulo: e.target.value }))
+                }
+                placeholder="Título"
+              />
+
+              <textarea
+                className={campo}
+                rows={4}
+                value={form?.descricao || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, descricao: e.target.value }))
+                }
+                placeholder="Descrição"
+              />
+
+              <select
+                className={campo}
+                value={form?.setor_origem || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, setor_origem: e.target.value }))
+                }
+              >
+                <option value="">Setor de origem</option>
+                {setoresPadrao.map((setor) => (
+                  <option key={setor} value={setor}>
+                    {setor}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className={campo}
+                value={form?.setor_destino || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, setor_destino: e.target.value }))
+                }
+              >
+                <option value="">Setor de destino</option>
+                {setoresPadrao.map((setor) => (
+                  <option key={setor} value={setor}>
+                    {setor}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className={campo}
+                value={form?.tipo_ocorrencia || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    tipo_ocorrencia: e.target.value,
+                  }))
+                }
+                placeholder="Tipo de ocorrência"
+              />
+
+              <input
+                className={campo}
+                value={form?.responsavel || ""}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, responsavel: e.target.value }))
+                }
+                placeholder="Responsável"
+              />
+
+              <select
+                className={campo}
+                value={form?.gravidade || "Leve"}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, gravidade: e.target.value }))
+                }
+              >
+                <option value="Leve">Leve</option>
+                <option value="Moderada">Moderada</option>
+                <option value="Grave">Grave</option>
+              </select>
+
+              <select
+                className={campo}
+                value={form?.status || "Aberto"}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, status: e.target.value }))
+                }
+              >
+                <option value="Aberto">Aberto</option>
+                <option value="Em análise">Em análise</option>
+                <option value="Concluído">Concluído</option>
+              </select>
+
+              <button
+                onClick={salvarOcorrencia}
+                className="rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
+              >
+                Salvar ocorrência
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-800">
+              Lista de ocorrências
+            </h2>
+
+            {loading ? (
+              <p className="mt-4 text-slate-600">Carregando...</p>
+            ) : erro ? (
+              <p className="mt-4 text-red-600">{erro}</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800 text-white">
+                      <th className={th}>Título</th>
+                      <th className={th}>Origem</th>
+                      <th className={th}>Destino</th>
+                      <th className={th}>Tipo</th>
+                      <th className={th}>Responsável</th>
+                      <th className={th}>Gravidade</th>
+                      <th className={th}>Status</th>
+                      <th className={th}>Ações</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {ocorrencias.length === 0 ? (
+                      <tr>
+                        <td className={td} colSpan={8}>
+                          Nenhuma ocorrência cadastrada.
+                        </td>
+                      </tr>
+                    ) : (
+                      ocorrencias.map((o) => (
+                        <tr
+                          key={o?.id || `${o?.titulo || "sem-titulo"}-${o?.status || "sem-status"}`}
+                        >
+                          <td className={td}>{o?.titulo || "-"}</td>
+                          <td className={td}>{o?.setor_origem || "-"}</td>
+                          <td className={td}>{o?.setor_destino || "-"}</td>
+                          <td className={td}>{o?.tipo_ocorrencia || "-"}</td>
+                          <td className={td}>{o?.responsavel || "-"}</td>
+                          <td className={td}>{o?.gravidade || "-"}</td>
+                          <td className={td}>{o?.status || "-"}</td>
+                          <td className={td}>
+                            <button
+                              onClick={() => excluirOcorrencia(o?.id)}
+                              className="rounded-2xl bg-red-600 px-3 py-2 text-white"
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </main>
-  )
+  );
 }
 
-const card: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 18,
-  padding: 24,
-  marginBottom: 20,
-  border: '1px solid #dbe7ee',
-  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+function Resumo({ titulo, valor }: { titulo: string; valor: number }) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-sm text-slate-500">{titulo}</p>
+      <p className="mt-2 text-3xl font-black text-slate-800">{valor}</p>
+    </div>
+  );
 }
 
-const grid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-  gap: 14,
-}
+const campo =
+  "w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none";
 
-const campo: React.CSSProperties = {
-  width: '100%',
-  padding: '12px 14px',
-  borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  fontSize: 14,
-}
-
-const botaoPrincipal: React.CSSProperties = {
-  padding: '12px 16px',
-  borderRadius: 12,
-  border: 'none',
-  background: '#0f766e',
-  color: '#fff',
-  fontWeight: 700,
-  cursor: 'pointer',
-}
-
-const botaoSecundario: React.CSSProperties = {
-  padding: '12px 16px',
-  borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  background: '#fff',
-  color: '#0f172a',
-  fontWeight: 700,
-  cursor: 'pointer',
-}
+const th = "px-4 py-3 text-left text-sm font-bold";
+const td = "border-b border-slate-200 px-4 py-3 text-sm text-slate-700";
