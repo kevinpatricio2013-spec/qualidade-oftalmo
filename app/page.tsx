@@ -1,14 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from './lib/supabase'
+import { supabase } from "./lib/supabase";
 
-type Aba =
-  | "dashboard"
-  | "cadastro"
-  | "gestao"
-  | "qualidade"
-  | "lider";
+type Aba = "dashboard" | "cadastro" | "gestao" | "qualidade" | "lider";
 
 type Ocorrencia = {
   id: number;
@@ -427,7 +422,7 @@ function imprimirOcorrencia(
   win.print();
 }
 
-export default function SistemaMasterPage() {
+export default function Page() {
   const [aba, setAba] = useState<Aba>("dashboard");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -1004,7 +999,7 @@ export default function SistemaMasterPage() {
         <div className="mx-auto max-w-7xl">
           <Card>
             <p className="text-sm font-semibold text-slate-600">
-              Carregando sistema master...
+              Carregando gestão de ocorrências...
             </p>
           </Card>
         </div>
@@ -1018,13 +1013,14 @@ export default function SistemaMasterPage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-700">
-              Qualidade Hospitalar
+              Sistema Hospitalar
             </p>
             <h1 className="mt-2 text-3xl font-black text-slate-800">
-              Sistema Master de Gestão de Ocorrências
+              Gestão de Ocorrências
             </h1>
             <p className="mt-2 text-sm text-slate-500">
-              Visão executiva, qualidade, liderança setorial, plano 5W2H e fluxo operacional.
+              Controle integrado com visão executiva, qualidade, liderança setorial,
+              tratativas, responsáveis e plano 5W2H.
             </p>
           </div>
 
