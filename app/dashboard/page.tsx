@@ -1,200 +1,131 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
 
-type Perfil = {
-  id?: number;
-  nome?: string | null;
-  email?: string | null;
-  perfil?: string | null;
-};
+const indicadores = [
+  { titulo: "Ocorrências Totais", valor: 128 },
+  { titulo: "Pendentes", valor: 32 },
+  { titulo: "Em Tratativa", valor: 18 },
+  { titulo: "Resolvidas", valor: 78 },
+];
 
-type ItemDashboard = {
-  id?: number;
-  nome?: string | null;
-  total?: number | null;
-};
+const setores = [
+  { nome: "Centro Cirúrgico", valor: 34 },
+  { nome: "CME", valor: 22 },
+  { nome: "Recepção", valor: 18 },
+  { nome: "Faturamento", valor: 12 },
+];
 
 export default function DashboardPage() {
-  const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [ocorrenciasPorSetor, setOcorrenciasPorSetor] = useState<ItemDashboard[]>([]);
-  const [ocorrenciasPorStatus, setOcorrenciasPorStatus] = useState<ItemDashboard[]>([]);
-  const [ocorrenciasPorGravidade, setOcorrenciasPorGravidade] = useState<ItemDashboard[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
-
-  async function carregarDashboard() {
-    if (!supabase) {
-      setErro("Supabase não configurado.");
-      setCarregando(false);
-      return;
-    }
-
-    setCarregando(true);
-    setErro("");
-
-    try {
-      const [perfilResp, setorResp, statusResp, gravidadeResp] =
-        await Promise.all([
-          supabase.from("perfis").select("*").limit(1).maybeSingle(),
-          supabase.from("ocorrencias").select("setor_origem"),
-          supabase.from("ocorrencias").select("status"),
-          supabase.from("ocorrencias").select("gravidade"),
-        ]);
-
-      setPerfil((perfilResp.data as Perfil) || null);
-
-      if (setorResp.error || statusResp.error || gravidadeResp.error) {
-        setErro("Não foi possível carregar os indicadores.");
-        setOcorrenciasPorSetor([]);
-        setOcorrenciasPorStatus([]);
-        setOcorrenciasPorGravidade([]);
-        setCarregando(false);
-        return;
-      }
-
-      setOcorrenciasPorSetor(
-        agruparPorNome(
-          (setorResp.data || []).map((item: any) => item?.setor_origem || "Não informado")
-        )
-      );
-
-      setOcorrenciasPorStatus(
-        agruparPorNome(
-          (statusResp.data || []).map((item: any) => item?.status || "Não informado")
-        )
-      );
-
-      setOcorrenciasPorGravidade(
-        agruparPorNome(
-          (gravidadeResp.data || []).map((item: any) => item?.gravidade || "Não informado")
-        )
-      );
-    } catch {
-      setErro("Erro inesperado ao carregar dashboard.");
-    } finally {
-      setCarregando(false);
-    }
-  }
-
-  useEffect(() => {
-    carregarDashboard();
-  }, []);
-
-  const totalGeral = useMemo(() => {
-    return ocorrenciasPorSetor.reduce((acc, item) => acc + Number(item?.total || 0), 0);
-  }, [ocorrenciasPorSetor]);
-
   return (
     <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-black text-slate-800">Dashboard</h1>
-              <p className="mt-2 text-slate-600">
-                Usuário: <strong>{perfil?.nome || perfil?.email || "-"}</strong> | Perfil:{" "}
-                <strong>{perfil?.perfil || "-"}</strong>
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* HEADER */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Dashboard Executivo
+            </h1>
+            <p className="text-sm text-slate-500">
+              Visão geral das ocorrências e desempenho institucional
+            </p>
+          </div>
+
+          <Link
+            href="/sistema"
+            className="bg-cyan-700 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-cyan-800"
+          >
+            Ir para sistema
+          </Link>
+        </div>
+
+        {/* INDICADORES */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {indicadores.map((item) => (
+            <div
+              key={item.titulo}
+              className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm"
+            >
+              <p className="text-sm text-slate-500">{item.titulo}</p>
+              <p className="text-3xl font-bold text-slate-900 mt-2">
+                {item.valor}
               </p>
             </div>
+          ))}
+        </div>
 
-            <div className="flex gap-3">
+        {/* SETORES */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">
+            Ocorrências por setor
+          </h2>
+
+          <div className="space-y-3">
+            {setores.map((setor) => (
+              <div key={setor.nome}>
+                <div className="flex justify-between text-sm text-slate-600 mb-1">
+                  <span>{setor.nome}</span>
+                  <span>{setor.valor}</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2">
+                  <div
+                    className="bg-cyan-600 h-2 rounded-full"
+                    style={{ width: `${setor.valor}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* STATUS */}
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+              Situação das ocorrências
+            </h2>
+
+            <ul className="space-y-2 text-sm">
+              <li className="flex justify-between">
+                <span>Pendentes</span>
+                <span className="font-semibold text-red-600">32</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Em tratativa</span>
+                <span className="font-semibold text-yellow-600">18</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Resolvidas</span>
+                <span className="font-semibold text-green-600">78</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-4">
+              Navegação rápida
+            </h2>
+
+            <div className="space-y-3">
               <Link
                 href="/"
-                className="rounded-2xl border border-slate-300 px-4 py-3 font-bold text-slate-700"
+                className="block bg-slate-800 p-3 rounded-xl hover:bg-slate-700"
               >
-                Início
+                Página inicial
               </Link>
+
               <Link
                 href="/sistema"
-                className="rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
+                className="block bg-slate-800 p-3 rounded-xl hover:bg-slate-700"
               >
-                Sistema
+                Gestão de ocorrências
               </Link>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <CardResumo titulo="Total geral" valor={String(totalGeral)} />
-          <CardResumo titulo="Setores monitorados" valor={String(ocorrenciasPorSetor.length)} />
-          <CardResumo titulo="Status monitorados" valor={String(ocorrenciasPorStatus.length)} />
-        </div>
-
-        {carregando ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-slate-600">Carregando dashboard...</p>
-          </section>
-        ) : erro ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-red-600">{erro}</p>
-          </section>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <ListaAgrupada titulo="Ocorrências por setor" itens={ocorrenciasPorSetor} />
-            <ListaAgrupada titulo="Ocorrências por status" itens={ocorrenciasPorStatus} />
-            <ListaAgrupada titulo="Ocorrências por gravidade" itens={ocorrenciasPorGravidade} />
-          </div>
-        )}
       </div>
     </main>
-  );
-}
-
-function agruparPorNome(lista: string[]): ItemDashboard[] {
-  const mapa = new Map<string, number>();
-
-  for (const nome of lista) {
-    const chave = nome || "Não informado";
-    mapa.set(chave, (mapa.get(chave) || 0) + 1);
-  }
-
-  return Array.from(mapa.entries()).map(([nome, total], index) => ({
-    id: index + 1,
-    nome,
-    total,
-  }));
-}
-
-function CardResumo({ titulo, valor }: { titulo: string; valor: string }) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p className="text-sm text-slate-500">{titulo}</p>
-      <p className="mt-2 text-3xl font-black text-slate-800">{valor}</p>
-    </div>
-  );
-}
-
-function ListaAgrupada({
-  titulo,
-  itens,
-}: {
-  titulo: string;
-  itens: ItemDashboard[];
-}) {
-  return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-xl font-bold text-slate-800">{titulo}</h2>
-
-      <div className="mt-4 grid gap-3">
-        {itens.length === 0 ? (
-          <p className="text-slate-600">Sem dados.</p>
-        ) : (
-          itens.map((item) => (
-            <div
-              key={item?.id || item?.nome || "item"}
-              className="flex items-center justify-between rounded-2xl border border-slate-200 p-4"
-            >
-              <strong>{item?.nome || "-"}</strong>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">
-                {item?.total || 0}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
   );
 }
