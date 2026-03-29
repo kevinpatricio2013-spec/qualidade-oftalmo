@@ -1,285 +1,420 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "./lib/supabase";
 
-type Responsavel = {
-  id?: number;
-  nome_responsavel?: string | null;
-  setor?: string | null;
-  situacao?: string | null;
-  prazo?: string | null;
+type Ocorrencia = {
+  id: number;
+  titulo: string;
+  setor: string;
+  tipo: string;
+  gravidade: string;
+  status: string;
+  data: string;
+  descricao: string;
 };
 
-export default function HomePage() {
-  const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
+const setores = [
+  "Agendamento",
+  "Autorização",
+  "Centro Cirúrgico",
+  "CME",
+  "Comissões Hospitalares",
+  "Compras",
+  "Consultório Médico",
+  "Contas Médicas",
+  "Controlador de Acesso",
+  "Diretoria",
+  "Facilities",
+  "Farmácia/OPME",
+  "Faturamento",
+  "Financeiro",
+  "Fornecedores Externos",
+  "Gestão da Informação",
+  "Gestão de Pessoas",
+  "Higiene",
+  "Qualidade",
+  "Recepção",
+  "Engenharia Clínica",
+  "Pronto Atendimento",
+];
 
-  const [formResponsavel, setFormResponsavel] = useState<Responsavel>({
-    nome_responsavel: "",
+const tipos = [
+  "Não conformidade",
+  "Evento adverso",
+  "Quase falha",
+  "Reclamação",
+  "Melhoria",
+];
+
+const gravidades = ["Leve", "Moderada", "Grave"];
+const statusLista = ["Aberto", "Em análise", "Em tratativa", "Resolvido"];
+
+const dadosIniciais: Ocorrencia[] = [
+  {
+    id: 1,
+    titulo: "Falha na conferência de material",
+    setor: "CME",
+    tipo: "Não conformidade",
+    gravidade: "Moderada",
+    status: "Em tratativa",
+    data: "2026-03-28",
+    descricao: "Divergência identificada na conferência de instrumental antes da liberação.",
+  },
+  {
+    id: 2,
+    titulo: "Atraso na autorização de procedimento",
+    setor: "Autorização",
+    tipo: "Reclamação",
+    gravidade: "Leve",
+    status: "Aberto",
+    data: "2026-03-27",
+    descricao: "Tempo de resposta acima do esperado para liberação do procedimento.",
+  },
+  {
+    id: 3,
+    titulo: "Inconsistência em registro assistencial",
+    setor: "Centro Cirúrgico",
+    tipo: "Não conformidade",
+    gravidade: "Grave",
+    status: "Em análise",
+    data: "2026-03-26",
+    descricao: "Registro incompleto em etapa obrigatória do processo perioperatório.",
+  },
+];
+
+const corStatus: Record<string, string> = {
+  Aberto: "bg-rose-50 text-rose-700 border-rose-200",
+  "Em análise": "bg-amber-50 text-amber-700 border-amber-200",
+  "Em tratativa": "bg-cyan-50 text-cyan-700 border-cyan-200",
+  Resolvido: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+export default function SistemaPage() {
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [setorFiltro, setSetorFiltro] = useState("Todos");
+  const [statusFiltro, setStatusFiltro] = useState("Todos");
+  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>(dadosIniciais);
+  const [form, setForm] = useState({
+    titulo: "",
     setor: "",
-    situacao: "",
-    prazo: "",
+    tipo: "",
+    gravidade: "",
+    descricao: "",
   });
 
-  async function carregarResponsaveis() {
-    if (!supabase) {
-      setErro("Supabase não configurado.");
-      setCarregando(false);
-      return;
-    }
+  const totais = useMemo(() => {
+    return {
+      total: ocorrencias.length,
+      abertas: ocorrencias.filter((o) => o.status === "Aberto").length,
+      tratativa: ocorrencias.filter((o) => o.status === "Em tratativa").length,
+      resolvidas: ocorrencias.filter((o) => o.status === "Resolvido").length,
+    };
+  }, [ocorrencias]);
 
-    setCarregando(true);
-    setErro("");
+  const ocorrenciasFiltradas = useMemo(() => {
+    return ocorrencias.filter((item) => {
+      const matchBusca =
+        item.titulo.toLowerCase().includes(busca.toLowerCase()) ||
+        item.descricao.toLowerCase().includes(busca.toLowerCase()) ||
+        item.setor.toLowerCase().includes(busca.toLowerCase());
 
-    const { data, error } = await supabase
-      .from("responsaveis")
-      .select("*")
-      .order("id", { ascending: false });
+      const matchSetor = setorFiltro === "Todos" ? true : item.setor === setorFiltro;
+      const matchStatus = statusFiltro === "Todos" ? true : item.status === statusFiltro;
 
-    if (error) {
-      setErro("Não foi possível carregar os responsáveis.");
-      setResponsaveis([]);
-      setCarregando(false);
-      return;
-    }
-
-    setResponsaveis((data as Responsavel[]) || []);
-    setCarregando(false);
-  }
-
-  useEffect(() => {
-    carregarResponsaveis();
-  }, []);
-
-  async function salvarResponsavel() {
-    if (!supabase) {
-      alert("Supabase não configurado.");
-      return;
-    }
-
-    if (!formResponsavel?.nome_responsavel?.trim()) {
-      alert("Preencha o nome do responsável.");
-      return;
-    }
-
-    const { error } = await supabase.from("responsaveis").insert([
-      {
-        nome_responsavel: formResponsavel?.nome_responsavel || null,
-        setor: formResponsavel?.setor || null,
-        situacao: formResponsavel?.situacao || null,
-        prazo: formResponsavel?.prazo || null,
-      },
-    ]);
-
-    if (error) {
-      alert("Não foi possível salvar: " + error.message);
-      return;
-    }
-
-    setFormResponsavel({
-      nome_responsavel: "",
-      setor: "",
-      situacao: "",
-      prazo: "",
+      return matchBusca && matchSetor && matchStatus;
     });
+  }, [ocorrencias, busca, setorFiltro, statusFiltro]);
 
-    carregarResponsaveis();
-  }
+  function salvarFormulario(e: React.FormEvent) {
+    e.preventDefault();
 
-  async function excluirResponsavel(id?: number) {
-    if (!supabase || !id) return;
-
-    const confirmar = window.confirm("Deseja excluir este responsável?");
-    if (!confirmar) return;
-
-    const { error } = await supabase.from("responsaveis").delete().eq("id", id);
-
-    if (error) {
-      alert("Não foi possível excluir: " + error.message);
+    if (!form.titulo || !form.setor || !form.tipo || !form.gravidade || !form.descricao) {
+      alert("Preencha todos os campos obrigatórios.");
       return;
     }
 
-    carregarResponsaveis();
-  }
+    const novaOcorrencia: Ocorrencia = {
+      id: Date.now(),
+      titulo: form.titulo,
+      setor: form.setor,
+      tipo: form.tipo,
+      gravidade: form.gravidade,
+      status: "Aberto",
+      data: new Date().toISOString().slice(0, 10),
+      descricao: form.descricao,
+    };
 
-  function formatarData(data?: string | null) {
-    if (!data) return "-";
-    const d = new Date(data);
-    if (Number.isNaN(d.getTime())) return data;
-    return d.toLocaleDateString("pt-BR");
+    setOcorrencias((atual) => [novaOcorrencia, ...atual]);
+    setForm({ titulo: "", setor: "", tipo: "", gravidade: "", descricao: "" });
+    setMostrarFormulario(false);
   }
-
-  const resumoHtml = useMemo(() => {
-    return `
-      <ul style="margin:0;padding-left:18px;">
-        ${responsaveis
-          .map(
-            (r) =>
-              `<li><strong>${r?.nome_responsavel || "-"}</strong> - ${r?.setor || "-"} - ${r?.situacao || "-"} - prazo: ${formatarData(r?.prazo)}</li>`
-          )
-          .join("")}
-      </ul>
-    `;
-  }, [responsaveis]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-black text-slate-800">
-                Gestão de Ocorrências
-              </h1>
-              <p className="mt-2 text-slate-600">
-                Página inicial do sistema hospitalar.
-              </p>
-            </div>
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
+        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">
+              Gestão operacional
+            </p>
+            <h1 className="mt-1 text-3xl font-bold text-slate-900">
+              Gestão de Ocorrências
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Painel operacional para registrar, acompanhar e tratar ocorrências em padrão hospitalar, com leitura limpa e institucional.
+            </p>
+          </div>
 
-            <div className="flex gap-3">
-              <Link
-                href="/dashboard"
-                className="rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/sistema"
-                className="rounded-2xl border border-slate-300 px-4 py-3 font-bold text-slate-700"
-              >
-                Sistema
-              </Link>
-            </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Página inicial
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Dashboard
+            </Link>
+            <button
+              onClick={() => setMostrarFormulario(true)}
+              className="inline-flex items-center justify-center rounded-xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-800"
+            >
+              + Nova ocorrência
+            </button>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-800">
-              Novo responsável
-            </h2>
+        <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <CardIndicador titulo="Ocorrências" valor={String(totais.total)} detalhe="Total registrado no sistema" />
+          <CardIndicador titulo="Abertas" valor={String(totais.abertas)} detalhe="Demandam avaliação inicial" />
+          <CardIndicador titulo="Em tratativa" valor={String(totais.tratativa)} detalhe="Ações em andamento" />
+          <CardIndicador titulo="Resolvidas" valor={String(totais.resolvidas)} detalhe="Concluídas com registro" />
+        </section>
 
-            <div className="mt-4 grid gap-3">
-              <input
-                className="rounded-2xl border border-slate-300 px-4 py-3 outline-none"
-                placeholder="Nome do responsável"
-                value={formResponsavel?.nome_responsavel || ""}
-                onChange={(e) =>
-                  setFormResponsavel((prev) => ({
-                    ...prev,
-                    nome_responsavel: e.target.value,
-                  }))
-                }
-              />
-
-              <input
-                className="rounded-2xl border border-slate-300 px-4 py-3 outline-none"
-                placeholder="Setor"
-                value={formResponsavel?.setor || ""}
-                onChange={(e) =>
-                  setFormResponsavel((prev) => ({
-                    ...prev,
-                    setor: e.target.value,
-                  }))
-                }
-              />
-
-              <input
-                className="rounded-2xl border border-slate-300 px-4 py-3 outline-none"
-                placeholder="Situação"
-                value={formResponsavel?.situacao || ""}
-                onChange={(e) =>
-                  setFormResponsavel((prev) => ({
-                    ...prev,
-                    situacao: e.target.value,
-                  }))
-                }
-              />
-
-              <input
-                type="date"
-                className="rounded-2xl border border-slate-300 px-4 py-3 outline-none"
-                value={formResponsavel?.prazo || ""}
-                onChange={(e) =>
-                  setFormResponsavel((prev) => ({
-                    ...prev,
-                    prazo: e.target.value,
-                  }))
-                }
-              />
-
-              <button
-                onClick={salvarResponsavel}
-                className="rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
-              >
-                Salvar
-              </button>
+        <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Painel de acompanhamento</h2>
+              <p className="text-sm text-slate-500">Use os filtros para localizar ocorrências de forma rápida.</p>
             </div>
-          </section>
+          </div>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-800">Resumo rápido</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Pesquisar</label>
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por título, descrição ou setor"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500"
+              />
+            </div>
 
-            <div className="mt-4 grid gap-3">
-              <div className="rounded-2xl bg-slate-100 p-4">
-                <p className="text-sm text-slate-500">Total de responsáveis</p>
-                <p className="text-2xl font-black text-slate-800">
-                  {responsaveis.length}
-                </p>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Setor</label>
+              <select
+                value={setorFiltro}
+                onChange={(e) => setSetorFiltro(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500"
+              >
+                <option>Todos</option>
+                {setores.map((setor) => (
+                  <option key={setor}>{setor}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Status</label>
+              <select
+                value={statusFiltro}
+                onChange={(e) => setStatusFiltro(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500"
+              >
+                <option>Todos</option>
+                {statusLista.map((status) => (
+                  <option key={status}>{status}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="text-lg font-semibold text-slate-900">Ocorrências registradas</h2>
+            <p className="text-sm text-slate-500">Lista principal do sistema com leitura mais alinhada ao padrão executivo.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead className="bg-slate-50">
+                <tr className="text-left text-sm text-slate-500">
+                  <th className="px-5 py-4 font-semibold">Título</th>
+                  <th className="px-5 py-4 font-semibold">Setor</th>
+                  <th className="px-5 py-4 font-semibold">Tipo</th>
+                  <th className="px-5 py-4 font-semibold">Gravidade</th>
+                  <th className="px-5 py-4 font-semibold">Status</th>
+                  <th className="px-5 py-4 font-semibold">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ocorrenciasFiltradas.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-500">
+                      Nenhuma ocorrência encontrada com os filtros aplicados.
+                    </td>
+                  </tr>
+                ) : (
+                  ocorrenciasFiltradas.map((item) => (
+                    <tr key={item.id} className="border-t border-slate-100 text-sm text-slate-700">
+                      <td className="px-5 py-4">
+                        <div>
+                          <p className="font-semibold text-slate-900">{item.titulo}</p>
+                          <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{item.descricao}</p>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">{item.setor}</td>
+                      <td className="px-5 py-4">{item.tipo}</td>
+                      <td className="px-5 py-4">{item.gravidade}</td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${corStatus[item.status]}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">{item.data}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {mostrarFormulario && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">Novo registro</p>
+                  <h3 className="mt-1 text-2xl font-bold text-slate-900">Nova ocorrência</h3>
+                  <p className="mt-2 text-sm text-slate-500">Preencha os campos abaixo para registrar uma nova ocorrência no sistema.</p>
+                </div>
+                <button
+                  onClick={() => setMostrarFormulario(false)}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Fechar
+                </button>
               </div>
 
-              <div
-                className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-700"
-                dangerouslySetInnerHTML={{ __html: resumoHtml }}
-              />
-            </div>
-          </section>
-        </div>
+              <form onSubmit={salvarFormulario} className="p-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Campo label="Título da ocorrência">
+                    <input
+                      value={form.titulo}
+                      onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                      placeholder="Digite o título"
+                    />
+                  </Campo>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-slate-800">Lista</h2>
+                  <Campo label="Setor">
+                    <select
+                      value={form.setor}
+                      onChange={(e) => setForm({ ...form, setor: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Selecione</option>
+                      {setores.map((setor) => (
+                        <option key={setor}>{setor}</option>
+                      ))}
+                    </select>
+                  </Campo>
 
-          {carregando ? (
-            <p className="mt-4 text-slate-600">Carregando...</p>
-          ) : erro ? (
-            <p className="mt-4 text-red-600">{erro}</p>
-          ) : responsaveis.length === 0 ? (
-            <p className="mt-4 text-slate-600">
-              Nenhum responsável cadastrado.
-            </p>
-          ) : (
-            <div className="mt-4 grid gap-3">
-              {responsaveis.map((r) => (
-                <div
-                  key={r?.id || `${r?.nome_responsavel || "sem-nome"}-${r?.prazo || "sem-prazo"}`}
-                  className="rounded-2xl border border-slate-200 p-4"
-                >
-                  <p className="font-black text-slate-800">
-                    {r?.nome_responsavel || "-"}
-                  </p>
-                  <p className="text-slate-600">Setor: {r?.setor || "-"}</p>
-                  <p className="text-slate-600">
-                    Situação: {r?.situacao || "-"}
-                  </p>
-                  <p className="text-slate-600">
-                    Prazo: {formatarData(r?.prazo)}
-                  </p>
+                  <Campo label="Tipo de ocorrência">
+                    <select
+                      value={form.tipo}
+                      onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Selecione</option>
+                      {tipos.map((tipo) => (
+                        <option key={tipo}>{tipo}</option>
+                      ))}
+                    </select>
+                  </Campo>
 
+                  <Campo label="Gravidade">
+                    <select
+                      value={form.gravidade}
+                      onChange={(e) => setForm({ ...form, gravidade: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Selecione</option>
+                      {gravidades.map((gravidade) => (
+                        <option key={gravidade}>{gravidade}</option>
+                      ))}
+                    </select>
+                  </Campo>
+                </div>
+
+                <div className="mt-4">
+                  <Campo label="Descrição da ocorrência">
+                    <textarea
+                      value={form.descricao}
+                      onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                      rows={5}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                      placeholder="Descreva a ocorrência de forma objetiva"
+                    />
+                  </Campo>
+                </div>
+
+                <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
                   <button
-                    onClick={() => excluirResponsavel(r?.id)}
-                    className="mt-3 rounded-2xl bg-red-600 px-4 py-2 text-white"
+                    type="button"
+                    onClick={() => setMostrarFormulario(false)}
+                    className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                   >
-                    Excluir
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white hover:bg-cyan-800"
+                  >
+                    Salvar ocorrência
                   </button>
                 </div>
-              ))}
+              </form>
             </div>
-          )}
-        </section>
+          </div>
+        )}
       </div>
     </main>
+  );
+}
+
+function CardIndicador({ titulo, valor, detalhe }: { titulo: string; valor: string; detalhe: string }) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm font-medium text-slate-500">{titulo}</p>
+      <p className="mt-2 text-3xl font-bold text-slate-900">{valor}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-500">{detalhe}</p>
+    </div>
+  );
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+      {children}
+    </label>
   );
 }
