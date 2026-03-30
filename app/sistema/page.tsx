@@ -23,6 +23,17 @@ type Ocorrencia = {
   setor_destino: string;
   gravidade: string;
   status: StatusOcorrencia;
+  acao_imediata?: string | null;
+  analise_causa?: string | null;
+  tratativa?: string | null;
+  validacao_qualidade?: string | null;
+  what_5w2h?: string | null;
+  why_5w2h?: string | null;
+  where_5w2h?: string | null;
+  when_5w2h?: string | null;
+  who_5w2h?: string | null;
+  how_5w2h?: string | null;
+  how_much_5w2h?: string | null;
   created_at?: string;
 };
 
@@ -77,7 +88,20 @@ const initialForm = {
   setor_origem: "",
   setor_destino: "",
   gravidade: "Leve",
-  status: "Aberta" as StatusOcorrencia,
+};
+
+const initialDetalhes = {
+  acao_imediata: "",
+  analise_causa: "",
+  tratativa: "",
+  validacao_qualidade: "",
+  what_5w2h: "",
+  why_5w2h: "",
+  where_5w2h: "",
+  when_5w2h: "",
+  who_5w2h: "",
+  how_5w2h: "",
+  how_much_5w2h: "",
 };
 
 export default function SistemaPage() {
@@ -97,7 +121,11 @@ export default function SistemaPage() {
   const [setorLideranca, setSetorLideranca] = useState("Centro Cirúrgico");
 
   const [modalAberto, setModalAberto] = useState(false);
+  const [modalDetalhesAberto, setModalDetalhesAberto] = useState(false);
+
   const [form, setForm] = useState(initialForm);
+  const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
+  const [detalhesForm, setDetalhesForm] = useState(initialDetalhes);
 
   async function carregarOcorrencias() {
     setCarregando(true);
@@ -125,6 +153,13 @@ export default function SistemaPage() {
 
   function atualizarCampo(campo: string, valor: string) {
     setForm((prev) => ({
+      ...prev,
+      [campo]: valor,
+    }));
+  }
+
+  function atualizarCampoDetalhes(campo: string, valor: string) {
+    setDetalhesForm((prev) => ({
       ...prev,
       [campo]: valor,
     }));
@@ -179,6 +214,69 @@ export default function SistemaPage() {
     setForm(initialForm);
     setModalAberto(false);
     setSalvando(false);
+  }
+
+  function abrirDetalhes(item: Ocorrencia) {
+    setOcorrenciaSelecionada(item);
+    setDetalhesForm({
+      acao_imediata: item.acao_imediata || "",
+      analise_causa: item.analise_causa || "",
+      tratativa: item.tratativa || "",
+      validacao_qualidade: item.validacao_qualidade || "",
+      what_5w2h: item.what_5w2h || "",
+      why_5w2h: item.why_5w2h || "",
+      where_5w2h: item.where_5w2h || "",
+      when_5w2h: item.when_5w2h || "",
+      who_5w2h: item.who_5w2h || "",
+      how_5w2h: item.how_5w2h || "",
+      how_much_5w2h: item.how_much_5w2h || "",
+    });
+    setModalDetalhesAberto(true);
+  }
+
+  async function salvarDetalhes() {
+    if (!ocorrenciaSelecionada) return;
+
+    setErro("");
+    setSucesso("");
+    setAtualizandoId(ocorrenciaSelecionada.id);
+
+    const { data, error } = await supabase
+      .from("ocorrencias")
+      .update({
+        acao_imediata: detalhesForm.acao_imediata,
+        analise_causa: detalhesForm.analise_causa,
+        tratativa: detalhesForm.tratativa,
+        validacao_qualidade: detalhesForm.validacao_qualidade,
+        what_5w2h: detalhesForm.what_5w2h,
+        why_5w2h: detalhesForm.why_5w2h,
+        where_5w2h: detalhesForm.where_5w2h,
+        when_5w2h: detalhesForm.when_5w2h,
+        who_5w2h: detalhesForm.who_5w2h,
+        how_5w2h: detalhesForm.how_5w2h,
+        how_much_5w2h: detalhesForm.how_much_5w2h,
+      })
+      .eq("id", ocorrenciaSelecionada.id)
+      .select();
+
+    if (error) {
+      console.error("ERRO AO SALVAR DETALHES:", error);
+      setErro("Não foi possível salvar os detalhes: " + error.message);
+      setAtualizandoId(null);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const atualizada = data[0] as Ocorrencia;
+      setOcorrencias((prev) =>
+        prev.map((item) => (item.id === atualizada.id ? atualizada : item))
+      );
+      setOcorrenciaSelecionada(atualizada);
+    }
+
+    setSucesso("Detalhes da ocorrência atualizados com sucesso.");
+    setAtualizandoId(null);
+    setModalDetalhesAberto(false);
   }
 
   function proximoStatusQualidade(statusAtual: StatusOcorrencia): StatusOcorrencia | null {
@@ -374,8 +472,8 @@ export default function SistemaPage() {
             </p>
             <p className="mt-2 text-sm text-slate-600">
               {perfilVisual === "Qualidade"
-                ? "Acompanha todas as ocorrências e conduz a análise e validação final."
-                : "Acompanha as ocorrências direcionadas ao setor responsável."}
+                ? "Acompanha todas as ocorrências, realiza análise, direcionamento e validação final."
+                : "Acompanha as ocorrências do setor e executa a tratativa operacional."}
             </p>
           </div>
 
@@ -521,21 +619,42 @@ export default function SistemaPage() {
                             }
                           />
                         </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <ResumoBloco
+                            titulo="Ação imediata"
+                            valor={item.acao_imediata}
+                          />
+                          <ResumoBloco
+                            titulo="Análise de causa"
+                            valor={item.analise_causa}
+                          />
+                          <ResumoBloco
+                            titulo="Tratativa"
+                            valor={item.tratativa}
+                          />
+                          <ResumoBloco
+                            titulo="Validação da Qualidade"
+                            valor={item.validacao_qualidade}
+                          />
+                        </div>
                       </div>
 
-                      <div className="w-full xl:w-[280px]">
+                      <div className="w-full xl:w-[310px]">
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                           <p className="text-sm font-semibold text-slate-800">
-                            Ação operacional
+                            Ações da ocorrência
                           </p>
 
-                          <p className="mt-2 text-sm text-slate-600">
-                            {perfilVisual === "Qualidade"
-                              ? "A Qualidade conduz análise inicial, direcionamento e validação final."
-                              : "A liderança assume a tratativa do setor e devolve para validação."}
-                          </p>
+                          <div className="mt-4 space-y-3">
+                            <button
+                              type="button"
+                              onClick={() => abrirDetalhes(item)}
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              Abrir tratativa / 5W2H
+                            </button>
 
-                          <div className="mt-4">
                             {podeQualidade && proximoQualidade && (
                               <button
                                 type="button"
@@ -564,7 +683,7 @@ export default function SistemaPage() {
 
                             {!podeQualidade && !podeLideranca && (
                               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-                                Sem ação disponível neste perfil.
+                                Sem avanço de status disponível neste perfil.
                               </div>
                             )}
                           </div>
@@ -691,6 +810,157 @@ export default function SistemaPage() {
           </div>
         </div>
       )}
+
+      {modalDetalhesAberto && ocorrenciaSelecionada && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4">
+          <div className="mx-auto w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">
+                  Ocorrência #{ocorrenciaSelecionada.id}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Tratativa, análise e plano 5W2H
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setModalDetalhesAberto(false)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {ocorrenciaSelecionada.titulo}
+                  </h3>
+                  <BadgeStatus status={ocorrenciaSelecionada.status} />
+                  <BadgeGravidade gravidade={ocorrenciaSelecionada.gravidade} />
+                </div>
+
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {ocorrenciaSelecionada.descricao}
+                </p>
+              </div>
+
+              <div className="grid gap-6">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <CampoTextarea
+                    label="Ação imediata"
+                    value={detalhesForm.acao_imediata}
+                    onChange={(v) => atualizarCampoDetalhes("acao_imediata", v)}
+                    placeholder="Descreva a contenção inicial adotada."
+                  />
+
+                  <CampoTextarea
+                    label="Análise de causa"
+                    value={detalhesForm.analise_causa}
+                    onChange={(v) => atualizarCampoDetalhes("analise_causa", v)}
+                    placeholder="Descreva a causa identificada."
+                  />
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <CampoTextarea
+                    label="Tratativa"
+                    value={detalhesForm.tratativa}
+                    onChange={(v) => atualizarCampoDetalhes("tratativa", v)}
+                    placeholder="Descreva a tratativa executada pelo setor."
+                  />
+
+                  <CampoTextarea
+                    label="Validação da Qualidade"
+                    value={detalhesForm.validacao_qualidade}
+                    onChange={(v) => atualizarCampoDetalhes("validacao_qualidade", v)}
+                    placeholder="Registrar a avaliação final da Qualidade."
+                  />
+                </div>
+
+                <div className="rounded-3xl border border-slate-200 p-5">
+                  <h3 className="text-lg font-semibold text-slate-900">Plano 5W2H</h3>
+
+                  <div className="mt-5 grid gap-5 md:grid-cols-2">
+                    <CampoTexto
+                      label="What (O que será feito)"
+                      value={detalhesForm.what_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("what_5w2h", v)}
+                      placeholder="Ex.: Revisar protocolo de identificação"
+                    />
+
+                    <CampoTexto
+                      label="Why (Por que)"
+                      value={detalhesForm.why_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("why_5w2h", v)}
+                      placeholder="Ex.: Reduzir recorrência"
+                    />
+
+                    <CampoTexto
+                      label="Where (Onde)"
+                      value={detalhesForm.where_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("where_5w2h", v)}
+                      placeholder="Ex.: Centro Cirúrgico"
+                    />
+
+                    <CampoTexto
+                      label="When (Quando)"
+                      value={detalhesForm.when_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("when_5w2h", v)}
+                      placeholder="Ex.: Até 15/04/2026"
+                    />
+
+                    <CampoTexto
+                      label="Who (Quem)"
+                      value={detalhesForm.who_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("who_5w2h", v)}
+                      placeholder="Ex.: Enfermeiro líder do setor"
+                    />
+
+                    <CampoTexto
+                      label="How (Como)"
+                      value={detalhesForm.how_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("how_5w2h", v)}
+                      placeholder="Ex.: Treinamento + revisão do fluxo"
+                    />
+
+                    <CampoTexto
+                      label="How much (Quanto custa)"
+                      value={detalhesForm.how_much_5w2h}
+                      onChange={(v) => atualizarCampoDetalhes("how_much_5w2h", v)}
+                      placeholder="Ex.: Sem custo adicional"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setModalDetalhesAberto(false)}
+                  className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={atualizandoId === ocorrenciaSelecionada.id}
+                  onClick={salvarDetalhes}
+                  className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {atualizandoId === ocorrenciaSelecionada.id
+                    ? "Salvando..."
+                    : "Salvar detalhes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -711,6 +981,25 @@ function Info({ label, valor }: { label: string; valor: string }) {
         {label}
       </p>
       <p className="mt-1 text-sm font-medium text-slate-700">{valor || "-"}</p>
+    </div>
+  );
+}
+
+function ResumoBloco({
+  titulo,
+  valor,
+}: {
+  titulo: string;
+  valor?: string | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {titulo}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-slate-700">
+        {valor && valor.trim() ? valor : "Não preenchido."}
+      </p>
     </div>
   );
 }
