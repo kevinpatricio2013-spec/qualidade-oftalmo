@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
 
+type StatusOcorrencia =
+  | "Aberta"
+  | "Em análise pela Qualidade"
+  | "Direcionada ao setor"
+  | "Em tratativa"
+  | "Aguardando validação"
+  | "Concluída";
+
+type PerfilVisual = "Qualidade" | "Liderança";
+
 type Ocorrencia = {
   id: number;
   titulo: string;
@@ -12,7 +22,7 @@ type Ocorrencia = {
   setor_origem: string;
   setor_destino: string;
   gravidade: string;
-  status: string;
+  status: StatusOcorrencia;
   created_at?: string;
 };
 
@@ -51,7 +61,7 @@ const tipos = [
 
 const gravidades = ["Leve", "Moderada", "Grave", "Crítica"];
 
-const statusList = [
+const statusList: StatusOcorrencia[] = [
   "Aberta",
   "Em análise pela Qualidade",
   "Direcionada ao setor",
@@ -67,18 +77,25 @@ const initialForm = {
   setor_origem: "",
   setor_destino: "",
   gravidade: "Leve",
-  status: "Aberta",
+  status: "Aberta" as StatusOcorrencia,
 };
 
 export default function SistemaPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [atualizandoId, setAtualizandoId] = useState<number | null>(null);
+
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
+
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
   const [filtroSetor, setFiltroSetor] = useState("Todos");
+
+  const [perfilVisual, setPerfilVisual] = useState<PerfilVisual>("Qualidade");
+  const [setorLideranca, setSetorLideranca] = useState("Centro Cirúrgico");
+
   const [modalAberto, setModalAberto] = useState(false);
   const [form, setForm] = useState(initialForm);
 
@@ -146,13 +163,7 @@ export default function SistemaPage() {
       .select();
 
     if (error) {
-      console.error("ERRO COMPLETO SUPABASE:", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
-
+      console.error("ERRO AO INSERIR:", error);
       setErro("Não foi possível criar a ocorrência: " + error.message);
       setSalvando(false);
       return;
@@ -170,8 +181,74 @@ export default function SistemaPage() {
     setSalvando(false);
   }
 
+  function proximoStatusQualidade(statusAtual: StatusOcorrencia): StatusOcorrencia | null {
+    if (statusAtual === "Aberta") return "Em análise pela Qualidade";
+    if (statusAtual === "Em análise pela Qualidade") return "Direcionada ao setor";
+    if (statusAtual === "Aguardando validação") return "Concluída";
+    return null;
+  }
+
+  function proximoStatusLideranca(statusAtual: StatusOcorrencia): StatusOcorrencia | null {
+    if (statusAtual === "Direcionada ao setor") return "Em tratativa";
+    if (statusAtual === "Em tratativa") return "Aguardando validação";
+    return null;
+  }
+
+  function labelAcaoQualidade(statusAtual: StatusOcorrencia): string {
+    if (statusAtual === "Aberta") return "Iniciar análise";
+    if (statusAtual === "Em análise pela Qualidade") return "Direcionar ao setor";
+    if (statusAtual === "Aguardando validação") return "Concluir ocorrência";
+    return "Avançar";
+  }
+
+  function labelAcaoLideranca(statusAtual: StatusOcorrencia): string {
+    if (statusAtual === "Direcionada ao setor") return "Assumir tratativa";
+    if (statusAtual === "Em tratativa") return "Enviar para validação";
+    return "Atualizar";
+  }
+
+  async function atualizarStatus(ocorrencia: Ocorrencia, novoStatus: StatusOcorrencia) {
+    setErro("");
+    setSucesso("");
+    setAtualizandoId(ocorrencia.id);
+
+    const { data, error } = await supabase
+      .from("ocorrencias")
+      .update({ status: novoStatus })
+      .eq("id", ocorrencia.id)
+      .select();
+
+    if (error) {
+      console.error("ERRO AO ATUALIZAR STATUS:", error);
+      setErro("Não foi possível atualizar o status: " + error.message);
+      setAtualizandoId(null);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const atualizada = data[0] as Ocorrencia;
+      setOcorrencias((prev) =>
+        prev.map((item) => (item.id === atualizada.id ? atualizada : item))
+      );
+    } else {
+      setOcorrencias((prev) =>
+        prev.map((item) =>
+          item.id === ocorrencia.id ? { ...item, status: novoStatus } : item
+        )
+      );
+    }
+
+    setSucesso(`Status atualizado para "${novoStatus}".`);
+    setAtualizandoId(null);
+  }
+
+  const ocorrenciasBase = useMemo(() => {
+    if (perfilVisual === "Qualidade") return ocorrencias;
+    return ocorrencias.filter((item) => item.setor_destino === setorLideranca);
+  }, [ocorrencias, perfilVisual, setorLideranca]);
+
   const ocorrenciasFiltradas = useMemo(() => {
-    return ocorrencias.filter((item) => {
+    return ocorrenciasBase.filter((item) => {
       const texto = busca.toLowerCase();
 
       const matchBusca =
@@ -188,24 +265,35 @@ export default function SistemaPage() {
 
       return matchBusca && matchStatus && matchSetor;
     });
-  }, [ocorrencias, busca, filtroStatus, filtroSetor]);
+  }, [ocorrenciasBase, busca, filtroStatus, filtroSetor]);
 
   const indicadores = useMemo(() => {
-    const total = ocorrencias.length;
-    const abertas = ocorrencias.filter((o) => o.status === "Aberta").length;
-    const emAndamento = ocorrencias.filter((o) =>
-      ["Em análise pela Qualidade", "Direcionada ao setor", "Em tratativa", "Aguardando validação"].includes(o.status)
-    ).length;
-    const concluidas = ocorrencias.filter((o) => o.status === "Concluída").length;
+    const base = ocorrenciasBase;
+    return {
+      total: base.length,
+      abertas: base.filter((o) => o.status === "Aberta").length,
+      emAnalise: base.filter((o) => o.status === "Em análise pela Qualidade").length,
+      direcionadas: base.filter((o) => o.status === "Direcionada ao setor").length,
+      emTratativa: base.filter((o) => o.status === "Em tratativa").length,
+      validacao: base.filter((o) => o.status === "Aguardando validação").length,
+      concluidas: base.filter((o) => o.status === "Concluída").length,
+    };
+  }, [ocorrenciasBase]);
 
-    return { total, abertas, emAndamento, concluidas };
-  }, [ocorrencias]);
+  const cardsFluxo = [
+    { titulo: "Abertas", valor: indicadores.abertas },
+    { titulo: "Em análise", valor: indicadores.emAnalise },
+    { titulo: "Direcionadas", valor: indicadores.direcionadas },
+    { titulo: "Em tratativa", valor: indicadores.emTratativa },
+    { titulo: "Validação", valor: indicadores.validacao },
+    { titulo: "Concluídas", valor: indicadores.concluidas },
+  ];
 
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl px-6 py-8 md:px-8">
         <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
                 Sistema de Gestão de Qualidade
@@ -249,14 +337,80 @@ export default function SistemaPage() {
           )}
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">Perfil visual</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setPerfilVisual("Qualidade")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  perfilVisual === "Qualidade"
+                    ? "bg-teal-600 text-white"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Qualidade
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPerfilVisual("Liderança")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  perfilVisual === "Liderança"
+                    ? "bg-teal-600 text-white"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Liderança
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">Visão operacional</p>
+            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
+              {perfilVisual}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {perfilVisual === "Qualidade"
+                ? "Acompanha todas as ocorrências e conduz a análise e validação final."
+                : "Acompanha as ocorrências direcionadas ao setor responsável."}
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">Setor da liderança</p>
+            <select
+              value={setorLideranca}
+              onChange={(e) => setSetorLideranca(e.target.value)}
+              disabled={perfilVisual !== "Liderança"}
+              className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-500 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              {setores.map((setor) => (
+                <option key={setor} value={setor}>
+                  {setor}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <CardIndicador titulo="Total" valor={indicadores.total} />
-          <CardIndicador titulo="Abertas" valor={indicadores.abertas} />
-          <CardIndicador titulo="Em andamento" valor={indicadores.emAndamento} />
-          <CardIndicador titulo="Concluídas" valor={indicadores.concluidas} />
+          {cardsFluxo.map((card) => (
+            <CardIndicador key={card.titulo} titulo={card.titulo} valor={card.valor} />
+          ))}
         </div>
 
         <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-slate-900">Fluxo operacional</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Aberta → Em análise pela Qualidade → Direcionada ao setor → Em tratativa → Aguardando validação → Concluída
+            </p>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
@@ -310,7 +464,11 @@ export default function SistemaPage() {
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">Ocorrências</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {perfilVisual === "Qualidade"
+                ? "Painel da Qualidade"
+                : `Painel da Liderança — ${setorLideranca}`}
+            </h2>
           </div>
 
           {carregando ? (
@@ -321,39 +479,101 @@ export default function SistemaPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {ocorrenciasFiltradas.map((item) => (
-                <div key={item.id} className="p-5">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-slate-900">
-                          #{item.id} — {item.titulo}
-                        </h3>
-                        <BadgeStatus status={item.status} />
-                        <BadgeGravidade gravidade={item.gravidade} />
+              {ocorrenciasFiltradas.map((item) => {
+                const proximoQualidade = proximoStatusQualidade(item.status);
+                const proximoLideranca = proximoStatusLideranca(item.status);
+
+                const podeQualidade =
+                  perfilVisual === "Qualidade" && proximoQualidade !== null;
+
+                const podeLideranca =
+                  perfilVisual === "Liderança" &&
+                  item.setor_destino === setorLideranca &&
+                  proximoLideranca !== null;
+
+                return (
+                  <div key={item.id} className="p-5">
+                    <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold text-slate-900">
+                            #{item.id} — {item.titulo}
+                          </h3>
+                          <BadgeStatus status={item.status} />
+                          <BadgeGravidade gravidade={item.gravidade} />
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-slate-600">
+                          {item.descricao}
+                        </p>
+
+                        <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-5">
+                          <Info label="Tipo" valor={item.tipo_ocorrencia} />
+                          <Info label="Setor origem" valor={item.setor_origem} />
+                          <Info label="Setor destino" valor={item.setor_destino} />
+                          <Info label="Status atual" valor={item.status} />
+                          <Info
+                            label="Data"
+                            valor={
+                              item.created_at
+                                ? new Date(item.created_at).toLocaleString("pt-BR")
+                                : "-"
+                            }
+                          />
+                        </div>
                       </div>
 
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        {item.descricao}
-                      </p>
+                      <div className="w-full xl:w-[280px]">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-sm font-semibold text-slate-800">
+                            Ação operacional
+                          </p>
 
-                      <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-4">
-                        <Info label="Tipo" valor={item.tipo_ocorrencia} />
-                        <Info label="Setor origem" valor={item.setor_origem} />
-                        <Info label="Setor destino" valor={item.setor_destino} />
-                        <Info
-                          label="Data"
-                          valor={
-                            item.created_at
-                              ? new Date(item.created_at).toLocaleString("pt-BR")
-                              : "-"
-                          }
-                        />
+                          <p className="mt-2 text-sm text-slate-600">
+                            {perfilVisual === "Qualidade"
+                              ? "A Qualidade conduz análise inicial, direcionamento e validação final."
+                              : "A liderança assume a tratativa do setor e devolve para validação."}
+                          </p>
+
+                          <div className="mt-4">
+                            {podeQualidade && proximoQualidade && (
+                              <button
+                                type="button"
+                                disabled={atualizandoId === item.id}
+                                onClick={() => atualizarStatus(item, proximoQualidade)}
+                                className="w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {atualizandoId === item.id
+                                  ? "Atualizando..."
+                                  : labelAcaoQualidade(item.status)}
+                              </button>
+                            )}
+
+                            {podeLideranca && proximoLideranca && (
+                              <button
+                                type="button"
+                                disabled={atualizandoId === item.id}
+                                onClick={() => atualizarStatus(item, proximoLideranca)}
+                                className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {atualizandoId === item.id
+                                  ? "Atualizando..."
+                                  : labelAcaoLideranca(item.status)}
+                              </button>
+                            )}
+
+                            {!podeQualidade && !podeLideranca && (
+                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+                                Sem ação disponível neste perfil.
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -365,9 +585,7 @@ export default function SistemaPage() {
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Nova ocorrência</h2>
-                <p className="text-sm text-slate-500">
-                  Cadastro de ocorrência
-                </p>
+                <p className="text-sm text-slate-500">Cadastro de ocorrência</p>
               </div>
 
               <button
