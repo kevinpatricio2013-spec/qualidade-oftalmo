@@ -88,7 +88,7 @@ const initialForm = {
   descricao: "",
   tipo_ocorrencia: "Não conformidade",
   setor_origem: "",
-  setor_destino: "",
+  setor_destino: "Qualidade",
   gravidade: "Leve",
   responsavel: "",
   prazo: "",
@@ -107,6 +107,43 @@ const initialDetalhes = {
   how_5w2h: "",
   how_much_5w2h: "",
 };
+
+const workflowSections: {
+  status: StatusOcorrencia;
+  titulo: string;
+  descricao: string;
+}[] = [
+  {
+    status: "Aberta",
+    titulo: "Recebidas pela Qualidade",
+    descricao: "Ocorrências recém-registradas aguardando início da análise.",
+  },
+  {
+    status: "Em análise pela Qualidade",
+    titulo: "Em análise",
+    descricao: "Ocorrências em triagem, classificação e avaliação inicial.",
+  },
+  {
+    status: "Direcionada ao setor",
+    titulo: "Direcionadas ao setor",
+    descricao: "Ocorrências encaminhadas ao setor responsável para atuação.",
+  },
+  {
+    status: "Em tratativa",
+    titulo: "Em tratativa",
+    descricao: "Ocorrências em execução de ações corretivas pelo setor.",
+  },
+  {
+    status: "Aguardando validação",
+    titulo: "Aguardando validação",
+    descricao: "Ações concluídas pelo setor e pendentes de validação da Qualidade.",
+  },
+  {
+    status: "Concluída",
+    titulo: "Concluídas",
+    descricao: "Ocorrências encerradas após validação final.",
+  },
+];
 
 export default function SistemaPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -231,7 +268,7 @@ export default function SistemaPage() {
       descricao: item.descricao || "",
       tipo_ocorrencia: item.tipo_ocorrencia || "Não conformidade",
       setor_origem: item.setor_origem || "",
-      setor_destino: item.setor_destino || "",
+      setor_destino: item.setor_destino || "Qualidade",
       gravidade: item.gravidade || "Leve",
       responsavel: item.responsavel || "",
       prazo: item.prazo || "",
@@ -422,7 +459,12 @@ export default function SistemaPage() {
   }
 
   function calcularPrazoStatus(prazo?: string | null) {
-    if (!prazo) return { label: "Sem prazo", classe: "bg-slate-50 text-slate-700 border-slate-200" };
+    if (!prazo) {
+      return {
+        label: "Sem prazo",
+        classe: "bg-slate-50 text-slate-700 border-slate-200",
+      };
+    }
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -435,7 +477,10 @@ export default function SistemaPage() {
     }
 
     if (diff <= 3) {
-      return { label: "Próximo do vencimento", classe: "bg-amber-50 text-amber-700 border-amber-200" };
+      return {
+        label: "Próximo do vencimento",
+        classe: "bg-amber-50 text-amber-700 border-amber-200",
+      };
     }
 
     return { label: "No prazo", classe: "bg-emerald-50 text-emerald-700 border-emerald-200" };
@@ -503,16 +548,28 @@ export default function SistemaPage() {
       .sort((a, b) => b.total - a.total);
   }, [ocorrenciasBase]);
 
+  const sectionsData = useMemo(() => {
+    return workflowSections.map((section) => ({
+      ...section,
+      items: ocorrenciasFiltradas.filter((item) => item.status === section.status),
+    }));
+  }, [ocorrenciasFiltradas]);
+
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl px-6 py-8 md:px-8">
         <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-teal-700">
+                Gestão hospitalar
+              </p>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
                 Sistema de Gestão de Qualidade
               </h1>
-              <p className="mt-2 text-sm text-slate-600">Gestão de ocorrências hospitalares</p>
+              <p className="mt-2 text-sm text-slate-600">
+                Painel executivo para análise, direcionamento, tratativa e validação de ocorrências.
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -520,7 +577,14 @@ export default function SistemaPage() {
                 href="/"
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Voltar para página inicial
+                Página inicial
+              </Link>
+
+              <Link
+                href="/abrir-ocorrencia"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Abertura pública
               </Link>
 
               <button
@@ -581,11 +645,13 @@ export default function SistemaPage() {
 
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-slate-500">Visão operacional</p>
-            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900">{perfilVisual}</p>
+            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
+              {perfilVisual}
+            </p>
             <p className="mt-2 text-sm text-slate-600">
               {perfilVisual === "Qualidade"
-                ? "Acompanha todas as ocorrências, valida e direciona os fluxos."
-                : "Acompanha as ocorrências do setor e executa a tratativa."}
+                ? "Recebe, analisa, direciona, valida e conclui as ocorrências."
+                : "Acompanha as ocorrências do setor e executa a tratativa operacional."}
             </p>
           </div>
 
@@ -625,7 +691,10 @@ export default function SistemaPage() {
                 <p className="text-sm text-slate-500">Sem dados.</p>
               ) : (
                 dashboardSetor.slice(0, 8).map((item) => (
-                  <div key={item.nome} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                  <div
+                    key={item.nome}
+                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                  >
                     <span className="text-sm font-medium text-slate-700">{item.nome}</span>
                     <span className="text-sm font-bold text-slate-900">{item.total}</span>
                   </div>
@@ -641,7 +710,10 @@ export default function SistemaPage() {
                 <p className="text-sm text-slate-500">Sem dados.</p>
               ) : (
                 dashboardGravidade.map((item) => (
-                  <div key={item.nome} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                  <div
+                    key={item.nome}
+                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                  >
                     <span className="text-sm font-medium text-slate-700">{item.nome}</span>
                     <span className="text-sm font-bold text-slate-900">{item.total}</span>
                   </div>
@@ -701,123 +773,157 @@ export default function SistemaPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {perfilVisual === "Qualidade" ? "Painel da Qualidade" : `Painel da Liderança — ${setorLideranca}`}
-            </h2>
-          </div>
+        <div className="space-y-6">
+          {sectionsData.map((section) => (
+            <section
+              key={section.status}
+              className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-100 px-5 py-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">{section.titulo}</h2>
+                    <p className="mt-1 text-sm text-slate-600">{section.descricao}</p>
+                  </div>
 
-          {carregando ? (
-            <div className="p-8 text-sm text-slate-500">Carregando...</div>
-          ) : ocorrenciasFiltradas.length === 0 ? (
-            <div className="p-8 text-sm text-slate-500">Nenhuma ocorrência encontrada.</div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {ocorrenciasFiltradas.map((item) => {
-                const proximoQualidade = proximoStatusQualidade(item.status);
-                const proximoLideranca = proximoStatusLideranca(item.status);
+                  <div className="inline-flex rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
+                    {section.items.length} ocorrência(s)
+                  </div>
+                </div>
+              </div>
 
-                const podeQualidade = perfilVisual === "Qualidade" && proximoQualidade !== null;
-                const podeLideranca =
-                  perfilVisual === "Liderança" &&
-                  item.setor_destino === setorLideranca &&
-                  proximoLideranca !== null;
+              {section.items.length === 0 ? (
+                <div className="px-5 py-6 text-sm text-slate-500">
+                  Nenhuma ocorrência nesta etapa.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {section.items.map((item) => {
+                    const proximoQualidade = proximoStatusQualidade(item.status);
+                    const proximoLideranca = proximoStatusLideranca(item.status);
 
-                const prazoStatus = calcularPrazoStatus(item.prazo);
+                    const podeQualidade =
+                      perfilVisual === "Qualidade" && proximoQualidade !== null;
 
-                return (
-                  <div key={item.id} className="p-5">
-                    <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-semibold text-slate-900">
-                            #{item.id} — {item.titulo}
-                          </h3>
-                          <BadgeStatus status={item.status} />
-                          <BadgeGravidade gravidade={item.gravidade} />
-                          <BadgePrazo label={prazoStatus.label} classe={prazoStatus.classe} />
-                        </div>
+                    const podeLideranca =
+                      perfilVisual === "Liderança" &&
+                      item.setor_destino === setorLideranca &&
+                      proximoLideranca !== null;
 
-                        <p className="mt-3 text-sm leading-6 text-slate-600">{item.descricao}</p>
+                    const prazoStatus = calcularPrazoStatus(item.prazo);
 
-                        <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-6">
-                          <Info label="Tipo" valor={item.tipo_ocorrencia} />
-                          <Info label="Setor origem" valor={item.setor_origem} />
-                          <Info label="Setor destino" valor={item.setor_destino} />
-                          <Info label="Responsável" valor={item.responsavel || "-"} />
-                          <Info label="Prazo" valor={item.prazo ? new Date(`${item.prazo}T00:00:00`).toLocaleDateString("pt-BR") : "-"} />
-                          <Info label="Status atual" valor={item.status} />
-                        </div>
+                    return (
+                      <div key={item.id} className="p-5">
+                        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-base font-semibold text-slate-900">
+                                #{item.id} — {item.titulo}
+                              </h3>
+                              <BadgeStatus status={item.status} />
+                              <BadgeGravidade gravidade={item.gravidade} />
+                              <BadgePrazo label={prazoStatus.label} classe={prazoStatus.classe} />
+                            </div>
 
-                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          <ResumoBloco titulo="Ação imediata" valor={item.acao_imediata} />
-                          <ResumoBloco titulo="Análise de causa" valor={item.analise_causa} />
-                          <ResumoBloco titulo="Tratativa" valor={item.tratativa} />
-                          <ResumoBloco titulo="Validação da Qualidade" valor={item.validacao_qualidade} />
-                        </div>
-                      </div>
+                            <p className="mt-3 text-sm leading-6 text-slate-600">
+                              {item.descricao}
+                            </p>
 
-                      <div className="w-full xl:w-[320px]">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-sm font-semibold text-slate-800">Ações da ocorrência</p>
+                            <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-6">
+                              <Info label="Tipo" valor={item.tipo_ocorrencia} />
+                              <Info label="Setor origem" valor={item.setor_origem} />
+                              <Info label="Setor destino" valor={item.setor_destino} />
+                              <Info label="Responsável" valor={item.responsavel || "-"} />
+                              <Info
+                                label="Prazo"
+                                valor={
+                                  item.prazo
+                                    ? new Date(`${item.prazo}T00:00:00`).toLocaleDateString("pt-BR")
+                                    : "-"
+                                }
+                              />
+                              <Info label="Status atual" valor={item.status} />
+                            </div>
 
-                          <div className="mt-4 space-y-3">
-                            <button
-                              type="button"
-                              onClick={() => abrirDetalhes(item)}
-                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                            >
-                              Abrir tratativa / 5W2H
-                            </button>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              <ResumoBloco titulo="Ação imediata" valor={item.acao_imediata} />
+                              <ResumoBloco titulo="Análise de causa" valor={item.analise_causa} />
+                              <ResumoBloco titulo="Tratativa" valor={item.tratativa} />
+                              <ResumoBloco
+                                titulo="Validação da Qualidade"
+                                valor={item.validacao_qualidade}
+                              />
+                            </div>
+                          </div>
 
-                            <button
-                              type="button"
-                              onClick={() => abrirEdicao(item)}
-                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                            >
-                              Editar ocorrência
-                            </button>
+                          <div className="w-full xl:w-[320px]">
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-sm font-semibold text-slate-800">
+                                Ações da ocorrência
+                              </p>
 
-                            {podeQualidade && proximoQualidade && (
-                              <button
-                                type="button"
-                                disabled={atualizandoId === item.id}
-                                onClick={() => atualizarStatus(item, proximoQualidade)}
-                                className="w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {atualizandoId === item.id ? "Atualizando..." : labelAcaoQualidade(item.status)}
-                              </button>
-                            )}
+                              <div className="mt-4 space-y-3">
+                                <button
+                                  type="button"
+                                  onClick={() => abrirDetalhes(item)}
+                                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                >
+                                  Abrir tratativa / 5W2H
+                                </button>
 
-                            {podeLideranca && proximoLideranca && (
-                              <button
-                                type="button"
-                                disabled={atualizandoId === item.id}
-                                onClick={() => atualizarStatus(item, proximoLideranca)}
-                                className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {atualizandoId === item.id ? "Atualizando..." : labelAcaoLideranca(item.status)}
-                              </button>
-                            )}
+                                <button
+                                  type="button"
+                                  onClick={() => abrirEdicao(item)}
+                                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                >
+                                  Editar ocorrência
+                                </button>
 
-                            <button
-                              type="button"
-                              disabled={excluindoId === item.id}
-                              onClick={() => excluirOcorrencia(item.id)}
-                              className="w-full rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              {excluindoId === item.id ? "Excluindo..." : "Excluir ocorrência"}
-                            </button>
+                                {podeQualidade && proximoQualidade && (
+                                  <button
+                                    type="button"
+                                    disabled={atualizandoId === item.id}
+                                    onClick={() => atualizarStatus(item, proximoQualidade)}
+                                    className="w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                  >
+                                    {atualizandoId === item.id
+                                      ? "Atualizando..."
+                                      : labelAcaoQualidade(item.status)}
+                                  </button>
+                                )}
+
+                                {podeLideranca && proximoLideranca && (
+                                  <button
+                                    type="button"
+                                    disabled={atualizandoId === item.id}
+                                    onClick={() => atualizarStatus(item, proximoLideranca)}
+                                    className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                  >
+                                    {atualizandoId === item.id
+                                      ? "Atualizando..."
+                                      : labelAcaoLideranca(item.status)}
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  disabled={excluindoId === item.id}
+                                  onClick={() => excluirOcorrencia(item.id)}
+                                  className="w-full rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  {excluindoId === item.id ? "Excluindo..." : "Excluir ocorrência"}
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       </div>
 
@@ -828,17 +934,14 @@ export default function SistemaPage() {
           onClose={() => setModalNovoAberto(false)}
         >
           <form onSubmit={criarOcorrencia} className="p-6">
-            <FormularioOcorrencia
-              form={form}
-              onChange={atualizarCampo}
-            />
+            <FormularioOcorrencia form={form} onChange={atualizarCampo} />
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
               <Link
-                href="/"
+                href="/abrir-ocorrencia"
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Voltar para página inicial
+                Ir para abertura pública
               </Link>
 
               <div className="flex gap-3">
@@ -870,10 +973,7 @@ export default function SistemaPage() {
           onClose={() => setModalEditarAberto(false)}
         >
           <form onSubmit={salvarEdicao} className="p-6">
-            <FormularioOcorrencia
-              form={formEdicao}
-              onChange={atualizarCampoEdicao}
-            />
+            <FormularioOcorrencia form={formEdicao} onChange={atualizarCampoEdicao} />
 
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -906,12 +1006,16 @@ export default function SistemaPage() {
           <div className="p-6">
             <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-semibold text-slate-900">{ocorrenciaSelecionada.titulo}</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {ocorrenciaSelecionada.titulo}
+                </h3>
                 <BadgeStatus status={ocorrenciaSelecionada.status} />
                 <BadgeGravidade gravidade={ocorrenciaSelecionada.gravidade} />
               </div>
 
-              <p className="mt-3 text-sm leading-6 text-slate-600">{ocorrenciaSelecionada.descricao}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                {ocorrenciaSelecionada.descricao}
+              </p>
             </div>
 
             <div className="grid gap-6">
@@ -1043,7 +1147,9 @@ function ModalBase({
 }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4">
-      <div className={`mx-auto w-full ${large ? "max-w-5xl" : "max-w-3xl"} rounded-3xl bg-white shadow-2xl`}>
+      <div
+        className={`mx-auto w-full ${large ? "max-w-5xl" : "max-w-3xl"} rounded-3xl bg-white shadow-2xl`}
+      >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-xl font-bold text-slate-900">{titulo}</h2>
@@ -1203,7 +1309,13 @@ function BadgeStatus({ status }: { status: string }) {
     "Concluída": "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
 
-  return <span className={`${base} ${styles[status] || "bg-slate-50 text-slate-700 border-slate-200"}`}>{status}</span>;
+  return (
+    <span
+      className={`${base} ${styles[status] || "bg-slate-50 text-slate-700 border-slate-200"}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function BadgeGravidade({ gravidade }: { gravidade: string }) {
@@ -1215,11 +1327,21 @@ function BadgeGravidade({ gravidade }: { gravidade: string }) {
     Crítica: "bg-red-50 text-red-700 border-red-200",
   };
 
-  return <span className={`${base} ${styles[gravidade] || "bg-slate-50 text-slate-700 border-slate-200"}`}>{gravidade}</span>;
+  return (
+    <span
+      className={`${base} ${styles[gravidade] || "bg-slate-50 text-slate-700 border-slate-200"}`}
+    >
+      {gravidade}
+    </span>
+  );
 }
 
 function BadgePrazo({ label, classe }: { label: string; classe: string }) {
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold border ${classe}`}>{label}</span>;
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold border ${classe}`}>
+      {label}
+    </span>
+  );
 }
 
 function CampoTexto({
