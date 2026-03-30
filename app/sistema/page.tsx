@@ -23,6 +23,8 @@ type Ocorrencia = {
   setor_destino: string;
   gravidade: string;
   status: StatusOcorrencia;
+  responsavel?: string | null;
+  prazo?: string | null;
   acao_imediata?: string | null;
   analise_causa?: string | null;
   tratativa?: string | null;
@@ -88,6 +90,8 @@ const initialForm = {
   setor_origem: "",
   setor_destino: "",
   gravidade: "Leve",
+  responsavel: "",
+  prazo: "",
 };
 
 const initialDetalhes = {
@@ -109,6 +113,7 @@ export default function SistemaPage() {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [atualizandoId, setAtualizandoId] = useState<number | null>(null);
+  const [excluindoId, setExcluindoId] = useState<number | null>(null);
 
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
@@ -120,10 +125,13 @@ export default function SistemaPage() {
   const [perfilVisual, setPerfilVisual] = useState<PerfilVisual>("Qualidade");
   const [setorLideranca, setSetorLideranca] = useState("Centro Cirúrgico");
 
-  const [modalAberto, setModalAberto] = useState(false);
+  const [modalNovoAberto, setModalNovoAberto] = useState(false);
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [modalDetalhesAberto, setModalDetalhesAberto] = useState(false);
 
   const [form, setForm] = useState(initialForm);
+  const [formEdicao, setFormEdicao] = useState(initialForm);
+
   const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
   const [detalhesForm, setDetalhesForm] = useState(initialDetalhes);
 
@@ -152,17 +160,15 @@ export default function SistemaPage() {
   }, []);
 
   function atualizarCampo(campo: string, valor: string) {
-    setForm((prev) => ({
-      ...prev,
-      [campo]: valor,
-    }));
+    setForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function atualizarCampoEdicao(campo: string, valor: string) {
+    setFormEdicao((prev) => ({ ...prev, [campo]: valor }));
   }
 
   function atualizarCampoDetalhes(campo: string, valor: string) {
-    setDetalhesForm((prev) => ({
-      ...prev,
-      [campo]: valor,
-    }));
+    setDetalhesForm((prev) => ({ ...prev, [campo]: valor }));
   }
 
   async function criarOcorrencia(e: React.FormEvent) {
@@ -189,6 +195,8 @@ export default function SistemaPage() {
       setor_origem: form.setor_origem,
       setor_destino: form.setor_destino,
       gravidade: form.gravidade,
+      responsavel: form.responsavel.trim() || null,
+      prazo: form.prazo || null,
       status: "Aberta",
     };
 
@@ -212,8 +220,87 @@ export default function SistemaPage() {
 
     setSucesso("Ocorrência criada com sucesso.");
     setForm(initialForm);
-    setModalAberto(false);
+    setModalNovoAberto(false);
     setSalvando(false);
+  }
+
+  function abrirEdicao(item: Ocorrencia) {
+    setOcorrenciaSelecionada(item);
+    setFormEdicao({
+      titulo: item.titulo || "",
+      descricao: item.descricao || "",
+      tipo_ocorrencia: item.tipo_ocorrencia || "Não conformidade",
+      setor_origem: item.setor_origem || "",
+      setor_destino: item.setor_destino || "",
+      gravidade: item.gravidade || "Leve",
+      responsavel: item.responsavel || "",
+      prazo: item.prazo || "",
+    });
+    setModalEditarAberto(true);
+  }
+
+  async function salvarEdicao(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ocorrenciaSelecionada) return;
+
+    setErro("");
+    setSucesso("");
+    setAtualizandoId(ocorrenciaSelecionada.id);
+
+    const { data, error } = await supabase
+      .from("ocorrencias")
+      .update({
+        titulo: formEdicao.titulo.trim(),
+        descricao: formEdicao.descricao.trim(),
+        tipo_ocorrencia: formEdicao.tipo_ocorrencia,
+        setor_origem: formEdicao.setor_origem,
+        setor_destino: formEdicao.setor_destino,
+        gravidade: formEdicao.gravidade,
+        responsavel: formEdicao.responsavel.trim() || null,
+        prazo: formEdicao.prazo || null,
+      })
+      .eq("id", ocorrenciaSelecionada.id)
+      .select();
+
+    if (error) {
+      console.error("ERRO AO EDITAR:", error);
+      setErro("Não foi possível salvar a edição: " + error.message);
+      setAtualizandoId(null);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const atualizada = data[0] as Ocorrencia;
+      setOcorrencias((prev) =>
+        prev.map((item) => (item.id === atualizada.id ? atualizada : item))
+      );
+    }
+
+    setSucesso("Ocorrência atualizada com sucesso.");
+    setAtualizandoId(null);
+    setModalEditarAberto(false);
+  }
+
+  async function excluirOcorrencia(id: number) {
+    const confirmado = window.confirm("Deseja realmente excluir esta ocorrência?");
+    if (!confirmado) return;
+
+    setErro("");
+    setSucesso("");
+    setExcluindoId(id);
+
+    const { error } = await supabase.from("ocorrencias").delete().eq("id", id);
+
+    if (error) {
+      console.error("ERRO AO EXCLUIR:", error);
+      setErro("Não foi possível excluir a ocorrência: " + error.message);
+      setExcluindoId(null);
+      return;
+    }
+
+    setOcorrencias((prev) => prev.filter((item) => item.id !== id));
+    setSucesso("Ocorrência excluída com sucesso.");
+    setExcluindoId(null);
   }
 
   function abrirDetalhes(item: Ocorrencia) {
@@ -274,7 +361,7 @@ export default function SistemaPage() {
       setOcorrenciaSelecionada(atualizada);
     }
 
-    setSucesso("Detalhes da ocorrência atualizados com sucesso.");
+    setSucesso("Detalhes atualizados com sucesso.");
     setAtualizandoId(null);
     setModalDetalhesAberto(false);
   }
@@ -328,16 +415,30 @@ export default function SistemaPage() {
       setOcorrencias((prev) =>
         prev.map((item) => (item.id === atualizada.id ? atualizada : item))
       );
-    } else {
-      setOcorrencias((prev) =>
-        prev.map((item) =>
-          item.id === ocorrencia.id ? { ...item, status: novoStatus } : item
-        )
-      );
     }
 
     setSucesso(`Status atualizado para "${novoStatus}".`);
     setAtualizandoId(null);
+  }
+
+  function calcularPrazoStatus(prazo?: string | null) {
+    if (!prazo) return { label: "Sem prazo", classe: "bg-slate-50 text-slate-700 border-slate-200" };
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const dataPrazo = new Date(`${prazo}T00:00:00`);
+    const diff = Math.ceil((dataPrazo.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diff < 0) {
+      return { label: "Vencido", classe: "bg-red-50 text-red-700 border-red-200" };
+    }
+
+    if (diff <= 3) {
+      return { label: "Próximo do vencimento", classe: "bg-amber-50 text-amber-700 border-amber-200" };
+    }
+
+    return { label: "No prazo", classe: "bg-emerald-50 text-emerald-700 border-emerald-200" };
   }
 
   const ocorrenciasBase = useMemo(() => {
@@ -353,7 +454,8 @@ export default function SistemaPage() {
         item.titulo?.toLowerCase().includes(texto) ||
         item.descricao?.toLowerCase().includes(texto) ||
         item.setor_origem?.toLowerCase().includes(texto) ||
-        item.setor_destino?.toLowerCase().includes(texto);
+        item.setor_destino?.toLowerCase().includes(texto) ||
+        item.responsavel?.toLowerCase().includes(texto);
 
       const matchStatus = filtroStatus === "Todos" || item.status === filtroStatus;
       const matchSetor =
@@ -375,17 +477,31 @@ export default function SistemaPage() {
       emTratativa: base.filter((o) => o.status === "Em tratativa").length,
       validacao: base.filter((o) => o.status === "Aguardando validação").length,
       concluidas: base.filter((o) => o.status === "Concluída").length,
+      vencidas: base.filter((o) => calcularPrazoStatus(o.prazo).label === "Vencido").length,
     };
   }, [ocorrenciasBase]);
 
-  const cardsFluxo = [
-    { titulo: "Abertas", valor: indicadores.abertas },
-    { titulo: "Em análise", valor: indicadores.emAnalise },
-    { titulo: "Direcionadas", valor: indicadores.direcionadas },
-    { titulo: "Em tratativa", valor: indicadores.emTratativa },
-    { titulo: "Validação", valor: indicadores.validacao },
-    { titulo: "Concluídas", valor: indicadores.concluidas },
-  ];
+  const dashboardSetor = useMemo(() => {
+    const mapa = new Map<string, number>();
+    ocorrenciasBase.forEach((item) => {
+      const chave = item.setor_destino || "Não informado";
+      mapa.set(chave, (mapa.get(chave) || 0) + 1);
+    });
+    return Array.from(mapa.entries())
+      .map(([nome, total]) => ({ nome, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [ocorrenciasBase]);
+
+  const dashboardGravidade = useMemo(() => {
+    const mapa = new Map<string, number>();
+    ocorrenciasBase.forEach((item) => {
+      const chave = item.gravidade || "Não informada";
+      mapa.set(chave, (mapa.get(chave) || 0) + 1);
+    });
+    return Array.from(mapa.entries())
+      .map(([nome, total]) => ({ nome, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [ocorrenciasBase]);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -396,9 +512,7 @@ export default function SistemaPage() {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
                 Sistema de Gestão de Qualidade
               </h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Gestão de ocorrências hospitalares
-              </p>
+              <p className="mt-2 text-sm text-slate-600">Gestão de ocorrências hospitalares</p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -411,7 +525,7 @@ export default function SistemaPage() {
 
               <button
                 type="button"
-                onClick={() => setModalAberto(true)}
+                onClick={() => setModalNovoAberto(true)}
                 className="inline-flex items-center justify-center rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
               >
                 Nova ocorrência
@@ -467,13 +581,11 @@ export default function SistemaPage() {
 
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-slate-500">Visão operacional</p>
-            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
-              {perfilVisual}
-            </p>
+            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900">{perfilVisual}</p>
             <p className="mt-2 text-sm text-slate-600">
               {perfilVisual === "Qualidade"
-                ? "Acompanha todas as ocorrências, realiza análise, direcionamento e validação final."
-                : "Acompanha as ocorrências do setor e executa a tratativa operacional."}
+                ? "Acompanha todas as ocorrências, valida e direciona os fluxos."
+                : "Acompanha as ocorrências do setor e executa a tratativa."}
             </p>
           </div>
 
@@ -494,38 +606,69 @@ export default function SistemaPage() {
           </div>
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-8">
           <CardIndicador titulo="Total" valor={indicadores.total} />
-          {cardsFluxo.map((card) => (
-            <CardIndicador key={card.titulo} titulo={card.titulo} valor={card.valor} />
-          ))}
+          <CardIndicador titulo="Abertas" valor={indicadores.abertas} />
+          <CardIndicador titulo="Em análise" valor={indicadores.emAnalise} />
+          <CardIndicador titulo="Direcionadas" valor={indicadores.direcionadas} />
+          <CardIndicador titulo="Em tratativa" valor={indicadores.emTratativa} />
+          <CardIndicador titulo="Validação" valor={indicadores.validacao} />
+          <CardIndicador titulo="Concluídas" valor={indicadores.concluidas} />
+          <CardIndicador titulo="Vencidas" valor={indicadores.vencidas} />
+        </div>
+
+        <div className="mb-6 grid gap-4 xl:grid-cols-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Ocorrências por setor</h2>
+            <div className="mt-4 space-y-3">
+              {dashboardSetor.length === 0 ? (
+                <p className="text-sm text-slate-500">Sem dados.</p>
+              ) : (
+                dashboardSetor.slice(0, 8).map((item) => (
+                  <div key={item.nome} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-medium text-slate-700">{item.nome}</span>
+                    <span className="text-sm font-bold text-slate-900">{item.total}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Ocorrências por gravidade</h2>
+            <div className="mt-4 space-y-3">
+              {dashboardGravidade.length === 0 ? (
+                <p className="text-sm text-slate-500">Sem dados.</p>
+              ) : (
+                dashboardGravidade.map((item) => (
+                  <div key={item.nome} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-medium text-slate-700">{item.nome}</span>
+                    <span className="text-sm font-bold text-slate-900">{item.total}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-slate-900">Fluxo operacional</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Aberta → Em análise pela Qualidade → Direcionada ao setor → Em tratativa → Aguardando validação → Concluída
-            </p>
+            <h2 className="text-lg font-semibold text-slate-900">Filtros</h2>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Buscar
-              </label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Buscar</label>
               <input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="Título, descrição ou setor"
+                placeholder="Título, descrição, setor ou responsável"
                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-teal-500"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Status
-              </label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Status</label>
               <select
                 value={filtroStatus}
                 onChange={(e) => setFiltroStatus(e.target.value)}
@@ -541,9 +684,7 @@ export default function SistemaPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Setor
-              </label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Setor</label>
               <select
                 value={filtroSetor}
                 onChange={(e) => setFiltroSetor(e.target.value)}
@@ -563,31 +704,27 @@ export default function SistemaPage() {
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-lg font-semibold text-slate-900">
-              {perfilVisual === "Qualidade"
-                ? "Painel da Qualidade"
-                : `Painel da Liderança — ${setorLideranca}`}
+              {perfilVisual === "Qualidade" ? "Painel da Qualidade" : `Painel da Liderança — ${setorLideranca}`}
             </h2>
           </div>
 
           {carregando ? (
             <div className="p-8 text-sm text-slate-500">Carregando...</div>
           ) : ocorrenciasFiltradas.length === 0 ? (
-            <div className="p-8 text-sm text-slate-500">
-              Nenhuma ocorrência encontrada.
-            </div>
+            <div className="p-8 text-sm text-slate-500">Nenhuma ocorrência encontrada.</div>
           ) : (
             <div className="divide-y divide-slate-100">
               {ocorrenciasFiltradas.map((item) => {
                 const proximoQualidade = proximoStatusQualidade(item.status);
                 const proximoLideranca = proximoStatusLideranca(item.status);
 
-                const podeQualidade =
-                  perfilVisual === "Qualidade" && proximoQualidade !== null;
-
+                const podeQualidade = perfilVisual === "Qualidade" && proximoQualidade !== null;
                 const podeLideranca =
                   perfilVisual === "Liderança" &&
                   item.setor_destino === setorLideranca &&
                   proximoLideranca !== null;
+
+                const prazoStatus = calcularPrazoStatus(item.prazo);
 
                 return (
                   <div key={item.id} className="p-5">
@@ -599,52 +736,31 @@ export default function SistemaPage() {
                           </h3>
                           <BadgeStatus status={item.status} />
                           <BadgeGravidade gravidade={item.gravidade} />
+                          <BadgePrazo label={prazoStatus.label} classe={prazoStatus.classe} />
                         </div>
 
-                        <p className="mt-3 text-sm leading-6 text-slate-600">
-                          {item.descricao}
-                        </p>
+                        <p className="mt-3 text-sm leading-6 text-slate-600">{item.descricao}</p>
 
-                        <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-5">
+                        <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-6">
                           <Info label="Tipo" valor={item.tipo_ocorrencia} />
                           <Info label="Setor origem" valor={item.setor_origem} />
                           <Info label="Setor destino" valor={item.setor_destino} />
+                          <Info label="Responsável" valor={item.responsavel || "-"} />
+                          <Info label="Prazo" valor={item.prazo ? new Date(`${item.prazo}T00:00:00`).toLocaleDateString("pt-BR") : "-"} />
                           <Info label="Status atual" valor={item.status} />
-                          <Info
-                            label="Data"
-                            valor={
-                              item.created_at
-                                ? new Date(item.created_at).toLocaleString("pt-BR")
-                                : "-"
-                            }
-                          />
                         </div>
 
                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          <ResumoBloco
-                            titulo="Ação imediata"
-                            valor={item.acao_imediata}
-                          />
-                          <ResumoBloco
-                            titulo="Análise de causa"
-                            valor={item.analise_causa}
-                          />
-                          <ResumoBloco
-                            titulo="Tratativa"
-                            valor={item.tratativa}
-                          />
-                          <ResumoBloco
-                            titulo="Validação da Qualidade"
-                            valor={item.validacao_qualidade}
-                          />
+                          <ResumoBloco titulo="Ação imediata" valor={item.acao_imediata} />
+                          <ResumoBloco titulo="Análise de causa" valor={item.analise_causa} />
+                          <ResumoBloco titulo="Tratativa" valor={item.tratativa} />
+                          <ResumoBloco titulo="Validação da Qualidade" valor={item.validacao_qualidade} />
                         </div>
                       </div>
 
-                      <div className="w-full xl:w-[310px]">
+                      <div className="w-full xl:w-[320px]">
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-sm font-semibold text-slate-800">
-                            Ações da ocorrência
-                          </p>
+                          <p className="text-sm font-semibold text-slate-800">Ações da ocorrência</p>
 
                           <div className="mt-4 space-y-3">
                             <button
@@ -655,6 +771,14 @@ export default function SistemaPage() {
                               Abrir tratativa / 5W2H
                             </button>
 
+                            <button
+                              type="button"
+                              onClick={() => abrirEdicao(item)}
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              Editar ocorrência
+                            </button>
+
                             {podeQualidade && proximoQualidade && (
                               <button
                                 type="button"
@@ -662,9 +786,7 @@ export default function SistemaPage() {
                                 onClick={() => atualizarStatus(item, proximoQualidade)}
                                 className="w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
                               >
-                                {atualizandoId === item.id
-                                  ? "Atualizando..."
-                                  : labelAcaoQualidade(item.status)}
+                                {atualizandoId === item.id ? "Atualizando..." : labelAcaoQualidade(item.status)}
                               </button>
                             )}
 
@@ -675,17 +797,18 @@ export default function SistemaPage() {
                                 onClick={() => atualizarStatus(item, proximoLideranca)}
                                 className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
                               >
-                                {atualizandoId === item.id
-                                  ? "Atualizando..."
-                                  : labelAcaoLideranca(item.status)}
+                                {atualizandoId === item.id ? "Atualizando..." : labelAcaoLideranca(item.status)}
                               </button>
                             )}
 
-                            {!podeQualidade && !podeLideranca && (
-                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-                                Sem avanço de status disponível neste perfil.
-                              </div>
-                            )}
+                            <button
+                              type="button"
+                              disabled={excluindoId === item.id}
+                              onClick={() => excluirOcorrencia(item.id)}
+                              className="w-full rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {excluindoId === item.id ? "Excluindo..." : "Excluir ocorrência"}
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -698,270 +821,339 @@ export default function SistemaPage() {
         </div>
       </div>
 
-      {modalAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Nova ocorrência</h2>
-                <p className="text-sm text-slate-500">Cadastro de ocorrência</p>
-              </div>
+      {modalNovoAberto && (
+        <ModalBase
+          titulo="Nova ocorrência"
+          subtitulo="Cadastro de ocorrência"
+          onClose={() => setModalNovoAberto(false)}
+        >
+          <form onSubmit={criarOcorrencia} className="p-6">
+            <FormularioOcorrencia
+              form={form}
+              onChange={atualizarCampo}
+            />
 
-              <button
-                type="button"
-                onClick={() => setModalAberto(false)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Fechar
-              </button>
-            </div>
+                Voltar para página inicial
+              </Link>
 
-            <form onSubmit={criarOcorrencia} className="p-6">
-              <div className="grid gap-5">
-                <div className="grid gap-5 md:grid-cols-2">
-                  <CampoTexto
-                    label="Título *"
-                    value={form.titulo}
-                    onChange={(v) => atualizarCampo("titulo", v)}
-                    placeholder="Digite o título"
-                  />
-
-                  <CampoSelect
-                    label="Tipo de ocorrência *"
-                    value={form.tipo_ocorrencia}
-                    onChange={(v) => atualizarCampo("tipo_ocorrencia", v)}
-                    options={tipos}
-                  />
-                </div>
-
-                <CampoTextarea
-                  label="Descrição *"
-                  value={form.descricao}
-                  onChange={(v) => atualizarCampo("descricao", v)}
-                  placeholder="Descreva a ocorrência"
-                />
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  <CampoSelect
-                    label="Setor de origem *"
-                    value={form.setor_origem}
-                    onChange={(v) => atualizarCampo("setor_origem", v)}
-                    options={setores}
-                    placeholder="Selecione"
-                  />
-
-                  <CampoSelect
-                    label="Setor de destino *"
-                    value={form.setor_destino}
-                    onChange={(v) => atualizarCampo("setor_destino", v)}
-                    options={setores}
-                    placeholder="Selecione"
-                  />
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  <CampoSelect
-                    label="Gravidade *"
-                    value={form.gravidade}
-                    onChange={(v) => atualizarCampo("gravidade", v)}
-                    options={gravidades}
-                  />
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                      Status inicial
-                    </label>
-                    <input
-                      value="Aberta"
-                      disabled
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                <Link
-                  href="/"
-                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Voltar para página inicial
-                </Link>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setModalAberto(false)}
-                    className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancelar
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={salvando}
-                    className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {salvando ? "Salvando..." : "Salvar ocorrência"}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modalDetalhesAberto && ocorrenciaSelecionada && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4">
-          <div className="mx-auto w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  Ocorrência #{ocorrenciaSelecionada.id}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Tratativa, análise e plano 5W2H
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setModalDetalhesAberto(false)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Fechar
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    {ocorrenciaSelecionada.titulo}
-                  </h3>
-                  <BadgeStatus status={ocorrenciaSelecionada.status} />
-                  <BadgeGravidade gravidade={ocorrenciaSelecionada.gravidade} />
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-slate-600">
-                  {ocorrenciaSelecionada.descricao}
-                </p>
-              </div>
-
-              <div className="grid gap-6">
-                <div className="grid gap-5 md:grid-cols-2">
-                  <CampoTextarea
-                    label="Ação imediata"
-                    value={detalhesForm.acao_imediata}
-                    onChange={(v) => atualizarCampoDetalhes("acao_imediata", v)}
-                    placeholder="Descreva a contenção inicial adotada."
-                  />
-
-                  <CampoTextarea
-                    label="Análise de causa"
-                    value={detalhesForm.analise_causa}
-                    onChange={(v) => atualizarCampoDetalhes("analise_causa", v)}
-                    placeholder="Descreva a causa identificada."
-                  />
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  <CampoTextarea
-                    label="Tratativa"
-                    value={detalhesForm.tratativa}
-                    onChange={(v) => atualizarCampoDetalhes("tratativa", v)}
-                    placeholder="Descreva a tratativa executada pelo setor."
-                  />
-
-                  <CampoTextarea
-                    label="Validação da Qualidade"
-                    value={detalhesForm.validacao_qualidade}
-                    onChange={(v) => atualizarCampoDetalhes("validacao_qualidade", v)}
-                    placeholder="Registrar a avaliação final da Qualidade."
-                  />
-                </div>
-
-                <div className="rounded-3xl border border-slate-200 p-5">
-                  <h3 className="text-lg font-semibold text-slate-900">Plano 5W2H</h3>
-
-                  <div className="mt-5 grid gap-5 md:grid-cols-2">
-                    <CampoTexto
-                      label="What (O que será feito)"
-                      value={detalhesForm.what_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("what_5w2h", v)}
-                      placeholder="Ex.: Revisar protocolo de identificação"
-                    />
-
-                    <CampoTexto
-                      label="Why (Por que)"
-                      value={detalhesForm.why_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("why_5w2h", v)}
-                      placeholder="Ex.: Reduzir recorrência"
-                    />
-
-                    <CampoTexto
-                      label="Where (Onde)"
-                      value={detalhesForm.where_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("where_5w2h", v)}
-                      placeholder="Ex.: Centro Cirúrgico"
-                    />
-
-                    <CampoTexto
-                      label="When (Quando)"
-                      value={detalhesForm.when_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("when_5w2h", v)}
-                      placeholder="Ex.: Até 15/04/2026"
-                    />
-
-                    <CampoTexto
-                      label="Who (Quem)"
-                      value={detalhesForm.who_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("who_5w2h", v)}
-                      placeholder="Ex.: Enfermeiro líder do setor"
-                    />
-
-                    <CampoTexto
-                      label="How (Como)"
-                      value={detalhesForm.how_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("how_5w2h", v)}
-                      placeholder="Ex.: Treinamento + revisão do fluxo"
-                    />
-
-                    <CampoTexto
-                      label="How much (Quanto custa)"
-                      value={detalhesForm.how_much_5w2h}
-                      onChange={(v) => atualizarCampoDetalhes("how_much_5w2h", v)}
-                      placeholder="Ex.: Sem custo adicional"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setModalDetalhesAberto(false)}
+                  onClick={() => setModalNovoAberto(false)}
                   className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Cancelar
                 </button>
 
                 <button
-                  type="button"
-                  disabled={atualizandoId === ocorrenciaSelecionada.id}
-                  onClick={salvarDetalhes}
+                  type="submit"
+                  disabled={salvando}
                   className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {atualizandoId === ocorrenciaSelecionada.id
-                    ? "Salvando..."
-                    : "Salvar detalhes"}
+                  {salvando ? "Salvando..." : "Salvar ocorrência"}
                 </button>
               </div>
             </div>
+          </form>
+        </ModalBase>
+      )}
+
+      {modalEditarAberto && ocorrenciaSelecionada && (
+        <ModalBase
+          titulo={`Editar ocorrência #${ocorrenciaSelecionada.id}`}
+          subtitulo="Atualização de dados principais"
+          onClose={() => setModalEditarAberto(false)}
+        >
+          <form onSubmit={salvarEdicao} className="p-6">
+            <FormularioOcorrencia
+              form={formEdicao}
+              onChange={atualizarCampoEdicao}
+            />
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setModalEditarAberto(false)}
+                className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="submit"
+                disabled={atualizandoId === ocorrenciaSelecionada.id}
+                className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {atualizandoId === ocorrenciaSelecionada.id ? "Salvando..." : "Salvar edição"}
+              </button>
+            </div>
+          </form>
+        </ModalBase>
+      )}
+
+      {modalDetalhesAberto && ocorrenciaSelecionada && (
+        <ModalBase
+          titulo={`Ocorrência #${ocorrenciaSelecionada.id}`}
+          subtitulo="Tratativa, análise e plano 5W2H"
+          onClose={() => setModalDetalhesAberto(false)}
+          large
+        >
+          <div className="p-6">
+            <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">{ocorrenciaSelecionada.titulo}</h3>
+                <BadgeStatus status={ocorrenciaSelecionada.status} />
+                <BadgeGravidade gravidade={ocorrenciaSelecionada.gravidade} />
+              </div>
+
+              <p className="mt-3 text-sm leading-6 text-slate-600">{ocorrenciaSelecionada.descricao}</p>
+            </div>
+
+            <div className="grid gap-6">
+              <div className="grid gap-5 md:grid-cols-2">
+                <CampoTextarea
+                  label="Ação imediata"
+                  value={detalhesForm.acao_imediata}
+                  onChange={(v) => atualizarCampoDetalhes("acao_imediata", v)}
+                  placeholder="Descreva a contenção inicial adotada."
+                />
+
+                <CampoTextarea
+                  label="Análise de causa"
+                  value={detalhesForm.analise_causa}
+                  onChange={(v) => atualizarCampoDetalhes("analise_causa", v)}
+                  placeholder="Descreva a causa identificada."
+                />
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <CampoTextarea
+                  label="Tratativa"
+                  value={detalhesForm.tratativa}
+                  onChange={(v) => atualizarCampoDetalhes("tratativa", v)}
+                  placeholder="Descreva a tratativa executada."
+                />
+
+                <CampoTextarea
+                  label="Validação da Qualidade"
+                  value={detalhesForm.validacao_qualidade}
+                  onChange={(v) => atualizarCampoDetalhes("validacao_qualidade", v)}
+                  placeholder="Registrar a avaliação final."
+                />
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 p-5">
+                <h3 className="text-lg font-semibold text-slate-900">Plano 5W2H</h3>
+
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <CampoTexto
+                    label="What (O que será feito)"
+                    value={detalhesForm.what_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("what_5w2h", v)}
+                    placeholder="Ex.: Revisar protocolo"
+                  />
+
+                  <CampoTexto
+                    label="Why (Por que)"
+                    value={detalhesForm.why_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("why_5w2h", v)}
+                    placeholder="Ex.: Reduzir recorrência"
+                  />
+
+                  <CampoTexto
+                    label="Where (Onde)"
+                    value={detalhesForm.where_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("where_5w2h", v)}
+                    placeholder="Ex.: Centro Cirúrgico"
+                  />
+
+                  <CampoTexto
+                    label="When (Quando)"
+                    value={detalhesForm.when_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("when_5w2h", v)}
+                    placeholder="Ex.: Até 20/04/2026"
+                  />
+
+                  <CampoTexto
+                    label="Who (Quem)"
+                    value={detalhesForm.who_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("who_5w2h", v)}
+                    placeholder="Ex.: Enfermeiro líder"
+                  />
+
+                  <CampoTexto
+                    label="How (Como)"
+                    value={detalhesForm.how_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("how_5w2h", v)}
+                    placeholder="Ex.: Treinamento e revisão"
+                  />
+
+                  <CampoTexto
+                    label="How much (Quanto custa)"
+                    value={detalhesForm.how_much_5w2h}
+                    onChange={(v) => atualizarCampoDetalhes("how_much_5w2h", v)}
+                    placeholder="Ex.: Sem custo adicional"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setModalDetalhesAberto(false)}
+                className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={atualizandoId === ocorrenciaSelecionada.id}
+                onClick={salvarDetalhes}
+                className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {atualizandoId === ocorrenciaSelecionada.id ? "Salvando..." : "Salvar detalhes"}
+              </button>
+            </div>
           </div>
-        </div>
+        </ModalBase>
       )}
     </main>
+  );
+}
+
+function ModalBase({
+  titulo,
+  subtitulo,
+  onClose,
+  children,
+  large = false,
+}: {
+  titulo: string;
+  subtitulo: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  large?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4">
+      <div className={`mx-auto w-full ${large ? "max-w-5xl" : "max-w-3xl"} rounded-3xl bg-white shadow-2xl`}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">{titulo}</h2>
+            <p className="text-sm text-slate-500">{subtitulo}</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Fechar
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FormularioOcorrencia({
+  form,
+  onChange,
+}: {
+  form: {
+    titulo: string;
+    descricao: string;
+    tipo_ocorrencia: string;
+    setor_origem: string;
+    setor_destino: string;
+    gravidade: string;
+    responsavel: string;
+    prazo: string;
+  };
+  onChange: (campo: string, valor: string) => void;
+}) {
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-5 md:grid-cols-2">
+        <CampoTexto
+          label="Título *"
+          value={form.titulo}
+          onChange={(v) => onChange("titulo", v)}
+          placeholder="Digite o título"
+        />
+
+        <CampoSelect
+          label="Tipo de ocorrência *"
+          value={form.tipo_ocorrencia}
+          onChange={(v) => onChange("tipo_ocorrencia", v)}
+          options={tipos}
+        />
+      </div>
+
+      <CampoTextarea
+        label="Descrição *"
+        value={form.descricao}
+        onChange={(v) => onChange("descricao", v)}
+        placeholder="Descreva a ocorrência"
+      />
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <CampoSelect
+          label="Setor de origem *"
+          value={form.setor_origem}
+          onChange={(v) => onChange("setor_origem", v)}
+          options={setores}
+          placeholder="Selecione"
+        />
+
+        <CampoSelect
+          label="Setor de destino *"
+          value={form.setor_destino}
+          onChange={(v) => onChange("setor_destino", v)}
+          options={setores}
+          placeholder="Selecione"
+        />
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-3">
+        <CampoSelect
+          label="Gravidade *"
+          value={form.gravidade}
+          onChange={(v) => onChange("gravidade", v)}
+          options={gravidades}
+        />
+
+        <CampoTexto
+          label="Responsável"
+          value={form.responsavel}
+          onChange={(v) => onChange("responsavel", v)}
+          placeholder="Ex.: Enfermeiro líder"
+        />
+
+        <CampoData
+          label="Prazo"
+          value={form.prazo}
+          onChange={(v) => onChange("prazo", v)}
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">Status inicial</label>
+        <input
+          value="Aberta"
+          disabled
+          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -977,9 +1169,7 @@ function CardIndicador({ titulo, valor }: { titulo: string; valor: number }) {
 function Info({ label, valor }: { label: string; valor: string }) {
   return (
     <div className="rounded-2xl bg-slate-50 p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="mt-1 text-sm font-medium text-slate-700">{valor || "-"}</p>
     </div>
   );
@@ -994,9 +1184,7 @@ function ResumoBloco({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-        {titulo}
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{titulo}</p>
       <p className="mt-2 text-sm leading-6 text-slate-700">
         {valor && valor.trim() ? valor : "Não preenchido."}
       </p>
@@ -1006,7 +1194,6 @@ function ResumoBloco({
 
 function BadgeStatus({ status }: { status: string }) {
   const base = "inline-flex rounded-full px-3 py-1 text-xs font-semibold border";
-
   const styles: Record<string, string> = {
     Aberta: "bg-red-50 text-red-700 border-red-200",
     "Em análise pela Qualidade": "bg-amber-50 text-amber-700 border-amber-200",
@@ -1016,16 +1203,11 @@ function BadgeStatus({ status }: { status: string }) {
     "Concluída": "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
 
-  return (
-    <span className={`${base} ${styles[status] || "bg-slate-50 text-slate-700 border-slate-200"}`}>
-      {status}
-    </span>
-  );
+  return <span className={`${base} ${styles[status] || "bg-slate-50 text-slate-700 border-slate-200"}`}>{status}</span>;
 }
 
 function BadgeGravidade({ gravidade }: { gravidade: string }) {
   const base = "inline-flex rounded-full px-3 py-1 text-xs font-semibold border";
-
   const styles: Record<string, string> = {
     Leve: "bg-emerald-50 text-emerald-700 border-emerald-200",
     Moderada: "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -1033,11 +1215,11 @@ function BadgeGravidade({ gravidade }: { gravidade: string }) {
     Crítica: "bg-red-50 text-red-700 border-red-200",
   };
 
-  return (
-    <span className={`${base} ${styles[gravidade] || "bg-slate-50 text-slate-700 border-slate-200"}`}>
-      {gravidade}
-    </span>
-  );
+  return <span className={`${base} ${styles[gravidade] || "bg-slate-50 text-slate-700 border-slate-200"}`}>{gravidade}</span>;
+}
+
+function BadgePrazo({ label, classe }: { label: string; classe: string }) {
+  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold border ${classe}`}>{label}</span>;
 }
 
 function CampoTexto({
@@ -1058,6 +1240,28 @@ function CampoTexto({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-500"
+      />
+    </div>
+  );
+}
+
+function CampoData({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-500"
       />
     </div>
