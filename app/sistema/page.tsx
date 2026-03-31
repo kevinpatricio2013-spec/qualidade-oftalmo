@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/src/lib/supabase";
+import { getAuthenticatedProfile } from "@/src/lib/auth";
 import DashboardCards from "@/src/components/sistema/DashboardCards";
 import OcorrenciaList from "@/src/components/sistema/OcorrenciaList";
 import { obterIndicadores } from "@/src/lib/qualidade";
 import type { Ocorrencia } from "@/src/types/ocorrencia";
+import type { Profile } from "@/src/types/profile";
 
 export default function SistemaPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
@@ -17,20 +20,36 @@ export default function SistemaPage() {
     setCarregando(true);
     setErro("");
 
-    const { data, error } = await supabase
-      .from("ocorrencias")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { profile: profileAtual, error: errorProfile } =
+        await getAuthenticatedProfile();
 
-    if (error) {
-      setErro(error.message);
+      if (errorProfile) {
+        throw new Error(errorProfile);
+      }
+
+      if (!profileAtual) {
+        throw new Error("Perfil do usuário não encontrado.");
+      }
+
+      setProfile(profileAtual);
+
+      const { data, error } = await supabase
+        .from("ocorrencias")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setOcorrencias((data || []) as Ocorrencia[]);
+    } catch (err: any) {
+      setErro(err.message || "Erro ao carregar dados.");
       setOcorrencias([]);
+    } finally {
       setCarregando(false);
-      return;
     }
-
-    setOcorrencias((data || []) as Ocorrencia[]);
-    setCarregando(false);
   }
 
   useEffect(() => {
@@ -38,7 +57,6 @@ export default function SistemaPage() {
   }, []);
 
   const indicadores = useMemo(() => obterIndicadores(ocorrencias), [ocorrencias]);
-
   const recentes = useMemo(() => ocorrencias.slice(0, 8), [ocorrencias]);
 
   if (carregando) {
@@ -61,13 +79,31 @@ export default function SistemaPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">
               Visão executiva
             </p>
+
             <h2 className="mt-2 text-3xl font-bold text-slate-900">
               Governança do fluxo de ocorrências hospitalares
             </h2>
+
             <p className="mt-3 text-slate-600">
               Ambiente central para acompanhamento do fluxo completo, desde a abertura até a
               conclusão, com foco em qualidade hospitalar e rastreabilidade das tratativas.
             </p>
+
+            {profile ? (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                  Perfil: {profile.role}
+                </span>
+
+                <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                  Setor: {profile.setor || "—"}
+                </span>
+
+                <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                  Usuário: {profile.nome || profile.email || "—"}
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -77,6 +113,7 @@ export default function SistemaPage() {
             >
               Nova ocorrência
             </Link>
+
             <Link
               href="/sistema/indicadores"
               className="rounded-2xl border border-slate-200 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
