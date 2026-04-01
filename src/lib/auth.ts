@@ -1,108 +1,53 @@
-import { supabase } from "@/src/lib/supabase";
-import type { Profile, UserRole } from "@/src/types/profile";
+import { supabase } from "./supabase";
 
-type AuthUserResult = {
-  userId: string | null;
-  profile: Profile | null;
-  error: string | null;
+export type Profile = {
+  id: string;
+  nome: string | null;
+  email: string | null;
+  role: "qualidade" | "lider" | "diretoria" | "colaborador";
+  setor: string | null;
 };
 
-export async function getAuthenticatedProfile(): Promise<AuthUserResult> {
-  try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+export async function getUsuarioLogado() {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-    if (userError) {
-      return {
-        userId: null,
-        profile: null,
-        error: userError.message,
-      };
-    }
-
-    if (!user) {
-      return {
-        userId: null,
-        profile: null,
-        error: "Usuário não autenticado.",
-      };
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, nome, email, role, setor, created_at, updated_at")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      return {
-        userId: user.id,
-        profile: null,
-        error: profileError.message,
-      };
-    }
-
-    return {
-      userId: user.id,
-      profile: profile as Profile,
-      error: null,
-    };
-  } catch (error) {
-    return {
-      userId: null,
-      profile: null,
-      error: error instanceof Error ? error.message : "Erro inesperado ao carregar perfil.",
-    };
-  }
-}
-
-export function isQualidade(profile: Profile | null): boolean {
-  return profile?.role === "QUALIDADE";
-}
-
-export function isLideranca(profile: Profile | null): boolean {
-  return profile?.role === "LIDERANCA";
-}
-
-export function canAccessQualidade(profile: Profile | null): boolean {
-  return isQualidade(profile);
-}
-
-export function canAccessLideranca(
-  profile: Profile | null,
-  setorAtual?: string | null
-): boolean {
-  if (!profile) return false;
-
-  if (isQualidade(profile)) return true;
-
-  if (isLideranca(profile)) {
-    if (!setorAtual) return true;
-    return profile.setor === setorAtual;
+  if (error) {
+    console.error("Erro ao buscar usuário logado:", error);
+    return null;
   }
 
-  return false;
+  return user;
 }
 
-export function getSetorPermitido(
-  profile: Profile | null,
-  setorSelecionado?: string | null
-): string | null {
-  if (!profile) return null;
+export async function getProfileAtual(): Promise<Profile | null> {
+  const user = await getUsuarioLogado();
 
-  if (isQualidade(profile)) {
-    return setorSelecionado ?? null;
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, nome, email, role, setor")
+    .eq("id", user.id)
+    .single();
+
+  if (error) {
+    console.error("Erro ao buscar profile:", error);
+    return null;
   }
 
-  if (isLideranca(profile)) {
-    return profile.setor ?? null;
-  }
-
-  return null;
+  return data as Profile;
 }
 
-export function hasRole(profile: Profile | null, role: UserRole): boolean {
-  return profile?.role === role;
+export async function signIn(email: string, password: string) {
+  return await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+}
+
+export async function signOut() {
+  return await supabase.auth.signOut();
 }
