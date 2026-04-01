@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { supabase } from "../../src/lib/supabase";
 import HistoricoOcorrencia from "../../components/HistoricoOcorrencia";
 
@@ -34,12 +35,9 @@ type Acao5W2H = {
   created_at?: string;
 };
 
-export default function DetalheOcorrencia({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const id = Number(params.id);
+export default function DetalheOcorrenciaPage() {
+  const params = useParams();
+  const id = Number(params?.id);
 
   const [ocorrencia, setOcorrencia] = useState<Ocorrencia | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
@@ -49,72 +47,98 @@ export default function DetalheOcorrencia({
   const [novaTratativa, setNovaTratativa] = useState("");
   const [novaAcao5w2h, setNovaAcao5w2h] = useState("");
 
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
+
   const [salvandoTratativa, setSalvandoTratativa] = useState(false);
   const [salvandoAcao, setSalvandoAcao] = useState(false);
   const [alterandoStatus, setAlterandoStatus] = useState(false);
 
-  async function carregarOcorrencia() {
+  async function carregarOcorrencia(ocorrenciaId: number) {
     const { data, error } = await supabase
       .from("ocorrencias")
       .select("*")
-      .eq("id", id)
+      .eq("id", ocorrenciaId)
       .single();
 
     if (error) {
-      console.error("Erro ao carregar ocorrência:", error);
-      return;
+      throw new Error(`Erro ao carregar ocorrência: ${error.message}`);
     }
 
-    setOcorrencia(data);
+    if (!data) {
+      throw new Error("Ocorrência não encontrada.");
+    }
+
+    setOcorrencia(data as Ocorrencia);
   }
 
-  async function carregarHistorico() {
+  async function carregarHistorico(ocorrenciaId: number) {
     const { data, error } = await supabase
       .from("historico_ocorrencia")
       .select("*")
-      .eq("ocorrencia_id", id)
+      .eq("ocorrencia_id", ocorrenciaId)
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Erro ao carregar histórico:", error);
+      console.error("Erro ao carregar histórico:", error.message);
       return;
     }
 
     setHistorico((data as HistoricoItem[]) || []);
   }
 
-  async function carregarTratativas() {
+  async function carregarTratativas(ocorrenciaId: number) {
     const { data, error } = await supabase
       .from("tratativas_ocorrencia")
       .select("*")
-      .eq("ocorrencia_id", id)
+      .eq("ocorrencia_id", ocorrenciaId)
       .order("id", { ascending: false });
 
     if (error) {
-      console.error("Erro ao carregar tratativas:", error);
+      console.error("Erro ao carregar tratativas:", error.message);
       return;
     }
 
     setTratativas((data as Tratativa[]) || []);
   }
 
-  async function carregarAcoes5W2H() {
+  async function carregarAcoes5W2H(ocorrenciaId: number) {
     const { data, error } = await supabase
       .from("plano_acao_5w2h")
       .select("*")
-      .eq("ocorrencia_id", id)
+      .eq("ocorrencia_id", ocorrenciaId)
       .order("id", { ascending: false });
 
     if (error) {
-      console.error("Erro ao carregar ações 5W2H:", error);
+      console.error("Erro ao carregar ações 5W2H:", error.message);
       return;
     }
 
     setAcoes5w2h((data as Acao5W2H[]) || []);
   }
 
+  async function carregarTudo(ocorrenciaId: number) {
+    setLoading(true);
+    setErro("");
+
+    try {
+      await Promise.all([
+        carregarOcorrencia(ocorrenciaId),
+        carregarHistorico(ocorrenciaId),
+        carregarTratativas(ocorrenciaId),
+        carregarAcoes5W2H(ocorrenciaId),
+      ]);
+    } catch (err) {
+      const mensagem =
+        err instanceof Error ? err.message : "Erro inesperado ao carregar a ocorrência.";
+      setErro(mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function salvarTratativa() {
-    if (!novaTratativa.trim()) return;
+    if (!novaTratativa.trim() || Number.isNaN(id)) return;
 
     setSalvandoTratativa(true);
 
@@ -124,19 +148,19 @@ export default function DetalheOcorrencia({
     });
 
     if (error) {
-      console.error("Erro ao salvar tratativa:", error);
+      setErro(`Erro ao salvar tratativa: ${error.message}`);
       setSalvandoTratativa(false);
       return;
     }
 
     setNovaTratativa("");
-    await carregarTratativas();
-    await carregarHistorico();
+    await carregarTratativas(id);
+    await carregarHistorico(id);
     setSalvandoTratativa(false);
   }
 
   async function salvar5W2H() {
-    if (!novaAcao5w2h.trim()) return;
+    if (!novaAcao5w2h.trim() || Number.isNaN(id)) return;
 
     setSalvandoAcao(true);
 
@@ -146,19 +170,19 @@ export default function DetalheOcorrencia({
     });
 
     if (error) {
-      console.error("Erro ao salvar ação 5W2H:", error);
+      setErro(`Erro ao salvar ação 5W2H: ${error.message}`);
       setSalvandoAcao(false);
       return;
     }
 
     setNovaAcao5w2h("");
-    await carregarAcoes5W2H();
-    await carregarHistorico();
+    await carregarAcoes5W2H(id);
+    await carregarHistorico(id);
     setSalvandoAcao(false);
   }
 
   async function alterarStatus(novoStatus: string) {
-    if (!ocorrencia) return;
+    if (!ocorrencia || Number.isNaN(id)) return;
 
     setAlterandoStatus(true);
 
@@ -168,30 +192,64 @@ export default function DetalheOcorrencia({
       .eq("id", id);
 
     if (error) {
-      console.error("Erro ao alterar status:", error);
+      setErro(`Erro ao alterar status: ${error.message}`);
       setAlterandoStatus(false);
       return;
     }
 
-    await carregarOcorrencia();
-    await carregarHistorico();
+    await carregarOcorrencia(id);
+    await carregarHistorico(id);
     setAlterandoStatus(false);
   }
 
   useEffect(() => {
-    if (!id || Number.isNaN(id)) return;
+    if (!params?.id) return;
 
-    carregarOcorrencia();
-    carregarHistorico();
-    carregarTratativas();
-    carregarAcoes5W2H();
-  }, [id]);
+    if (Number.isNaN(id)) {
+      setErro("ID da ocorrência inválido.");
+      setLoading(false);
+      return;
+    }
+
+    carregarTudo(id);
+  }, [params?.id, id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-lg text-slate-600">Carregando ocorrência...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (erro) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-semibold text-red-700">Não foi possível carregar a ocorrência</h1>
+          <p className="mt-3 text-sm text-slate-700">{erro}</p>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!Number.isNaN(id)) carregarTudo(id);
+            }}
+            className="mt-4 rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!ocorrencia) {
     return (
       <div className="min-h-screen bg-slate-50 p-6">
         <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm text-slate-500">Carregando ocorrência...</p>
+          <p className="text-sm text-slate-600">Ocorrência não encontrada.</p>
         </div>
       </div>
     );
