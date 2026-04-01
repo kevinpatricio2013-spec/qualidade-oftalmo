@@ -1,43 +1,97 @@
 "use client";
 
 import Link from "next/link";
+import { Building2, ShieldCheck, BarChart3, Users, ClipboardList } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6 py-12">
-        <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white p-8 shadow-sm md:p-12">
-          <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-teal-700">
-                Hospitalar
-              </p>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 md:text-5xl">
-                Sistema de Gestão de Qualidade
-              </h1>
-              <p className="mt-4 text-base text-slate-600">
-                Plataforma para registro, análise e acompanhamento de ocorrências.
-              </p>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <section className="border-b bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-emerald-700 p-3 text-white shadow-sm">
+              <Building2 size={24} />
             </div>
-
-            <div className="flex w-full max-w-sm flex-col gap-3">
-              <Link
-                href="/abrir-ocorrencia"
-                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Abrir ocorrência
-              </Link>
-
-              <Link
-                href="/sistema"
-                className="inline-flex items-center justify-center rounded-2xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
-              >
-                Acessar gestão
-              </Link>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Sistema de Gestão da Qualidade</h1>
+              <p className="text-sm text-slate-600">
+                Gestão de ocorrências, tratativas e indicadores assistenciais e operacionais
+              </p>
             </div>
           </div>
+
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border bg-slate-50 p-5 shadow-sm">
+              <ShieldCheck className="mb-3 text-emerald-700" size={26} />
+              <h2 className="text-lg font-semibold">Central da Qualidade</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Recebe, analisa, classifica, direciona, valida e encerra ocorrências.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border bg-slate-50 p-5 shadow-sm">
+              <Users className="mb-3 text-emerald-700" size={26} />
+              <h2 className="text-lg font-semibold">Liderança Setorial</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Acompanha e trata exclusivamente as ocorrências destinadas ao seu setor.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border bg-slate-50 p-5 shadow-sm">
+              <BarChart3 className="mb-3 text-emerald-700" size={26} />
+              <h2 className="text-lg font-semibold">Painel Executivo</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Consolida indicadores institucionais, desempenho setorial e monitoramento estratégico.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/login"
+              className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow hover:bg-emerald-800"
+            >
+              Acessar sistema
+            </Link>
+
+            <Link
+              href="/ocorrencia/nova"
+              className="rounded-xl border border-emerald-700 px-5 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+            >
+              Registrar ocorrência
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 py-10">
+        <div className="grid gap-5 md:grid-cols-3">
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <ClipboardList className="mb-3 text-emerald-700" size={24} />
+            <h3 className="text-base font-semibold">Fluxo estruturado</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Toda ocorrência é recebida inicialmente pela Qualidade, que faz a triagem e o
+              direcionamento técnico ao setor responsável.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <ShieldCheck className="mb-3 text-emerald-700" size={24} />
+            <h3 className="text-base font-semibold">Perfis com acesso controlado</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Cada perfil visualiza apenas o que é compatível com sua função institucional.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <BarChart3 className="mb-3 text-emerald-700" size={24} />
+            <h3 className="text-base font-semibold">Indicadores para decisão</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Dashboards por perfil com foco assistencial, operacional e executivo.
+            </p>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
