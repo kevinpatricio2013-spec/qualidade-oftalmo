@@ -1,403 +1,383 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import BarraSistema from "../../src/components/BarraSistema";
 import { supabase } from "../../src/lib/supabase";
-
-type StatusOcorrencia =
-  | "aberta"
-  | "em_triagem_qualidade"
-  | "direcionada_ao_setor"
-  | "em_analise"
-  | "plano_de_acao"
-  | "aguardando_validacao_qualidade"
-  | "encerrada"
-  | "reaberta"
-  | "cancelada";
-
-type Severidade = "leve" | "moderada" | "grave" | "sentinela" | null;
+import {
+  podeFiltrarTodosSetores,
+  podeVerTudo,
+} from "../../src/lib/permissoes";
 
 type Ocorrencia = {
   id: number;
-  codigo: string | null;
   titulo: string;
-  descricao: string;
-  status: StatusOcorrencia;
-  severidade: Severidade;
-  created_at: string;
-  prazo_tratativa: string | null;
-  setor_origem_id: string | null;
-  setor_destino_id: string | null;
-  setor_origem?: { nome: string } | null;
-  setor_destino?: { nome: string } | null;
+  descricao: string | null;
+  setor_origem: string | null;
+  setor_destino: string | null;
+  status: string | null;
+  gravidade: string | null;
+  tipo_ocorrencia: string | null;
+  created_at?: string | null;
 };
 
-type Setor = {
+type Profile = {
   id: string;
-  nome: string;
-};
-
-const STATUS_LABEL: Record<StatusOcorrencia, string> = {
-  aberta: "Aberta",
-  em_triagem_qualidade: "Em triagem",
-  direcionada_ao_setor: "Direcionada",
-  em_analise: "Em análise",
-  plano_de_acao: "Plano de ação",
-  aguardando_validacao_qualidade: "Aguardando validação",
-  encerrada: "Encerrada",
-  reaberta: "Reaberta",
-  cancelada: "Cancelada",
+  nome: string | null;
+  email: string | null;
+  role: string | null;
+  setor: string | null;
 };
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [setores, setSetores] = useState<Setor[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
 
-  async function carregarDashboard() {
+  const [filtroSetor, setFiltroSetor] = useState("TODOS");
+  const [filtroStatus, setFiltroStatus] = useState("TODOS");
+  const [filtroGravidade, setFiltroGravidade] = useState("TODOS");
+
+  async function carregarTudo() {
     try {
-      setLoading(true);
+      setCarregando(true);
       setErro("");
 
-      const [{ data: setoresData, error: setoresError }, { data, error }] =
-        await Promise.all([
-          supabase
-            .from("setores")
-            .select("id, nome")
-            .eq("ativo", true)
-            .order("nome", { ascending: true }),
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-          supabase
-            .from("ocorrencias")
-            .select(`
-              id,
-              codigo,
-              titulo,
-              descricao,
-              status,
-              severidade,
-              created_at,
-              prazo_tratativa,
-              setor_origem_id,
-              setor_destino_id,
-              setor_origem:setor_origem_id ( nome ),
-              setor_destino:setor_destino_id ( nome )
-            `)
-            .order("created_at", { ascending: false }),
-        ]);
+      if (authError || !user) {
+        setErro("Usuário não autenticado.");
+        setCarregando(false);
+        return;
+      }
 
-      if (setoresError) throw setoresError;
-      if (error) throw error;
+      const { data: perfil, error: perfilError } = await supabase
+        .from("profiles")
+        .select("id, nome, email, role, setor")
+        .eq("id", user.id)
+        .single();
 
-      setSetores((setoresData || []) as Setor[]);
-      setOcorrencias((data || []) as unknown as Ocorrencia[]);
-    } catch (e: any) {
-      setErro(e.message || "Erro ao carregar dashboard.");
-    } finally {
-      setLoading(false);
+      if (perfilError || !perfil) {
+        setErro("Não foi possível carregar o perfil do usuário.");
+        setCarregando(false);
+        return;
+      }
+
+      setProfile(perfil);
+
+      let query = supabase
+        .from("ocorrencias")
+        .select(
+          "id, titulo, descricao, setor_origem, setor_destino, status, gravidade, tipo_ocorrencia, created_at"
+        )
+        .order("id", { ascending: false });
+
+      if (!podeVerTudo(perfil.role)) {
+        query = query.eq("setor_destino", perfil.setor);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        setErro("Não foi possível carregar as ocorrências do dashboard.");
+        setCarregando(false);
+        return;
+      }
+
+      setOcorrencias(data || []);
+      setCarregando(false);
+    } catch (e) {
+      console.error("Erro ao carregar dashboard:", e);
+      setErro("Ocorreu um erro ao carregar o dashboard.");
+      setCarregando(false);
     }
   }
 
   useEffect(() => {
-    carregarDashboard();
+    carregarTudo();
   }, []);
 
-  const indicadores = useMemo(() => {
-    const total = ocorrencias.length;
-    const abertas = ocorrencias.filter((o) => o.status === "aberta").length;
-    const triagem = ocorrencias.filter(
-      (o) => o.status === "em_triagem_qualidade"
-    ).length;
-    const tratamento = ocorrencias.filter((o) =>
-      ["direcionada_ao_setor", "em_analise", "plano_de_acao"].includes(o.status)
-    ).length;
-    const validacao = ocorrencias.filter(
-      (o) => o.status === "aguardando_validacao_qualidade"
-    ).length;
-    const encerradas = ocorrencias.filter(
-      (o) => o.status === "encerrada"
-    ).length;
+  const setoresDisponiveis = useMemo(() => {
+    const base: string[] = ocorrencias
+      .map((item) => item.setor_destino)
+      .filter((setor): setor is string => Boolean(setor));
 
-    return {
-      total,
-      abertas,
-      triagem,
-      tratamento,
-      validacao,
-      encerradas,
-    };
+    return Array.from(new Set(base)).sort((a, b) => a.localeCompare(b));
   }, [ocorrencias]);
 
-  const porStatus = useMemo(() => {
-    return Object.keys(STATUS_LABEL).map((status) => ({
-      status: status as StatusOcorrencia,
-      label: STATUS_LABEL[status as StatusOcorrencia],
-      total: ocorrencias.filter((o) => o.status === status).length,
-    }));
-  }, [ocorrencias]);
+  const ocorrenciasFiltradas = useMemo(() => {
+    return ocorrencias.filter((item) => {
+      const matchSetor =
+        filtroSetor === "TODOS" ? true : item.setor_destino === filtroSetor;
 
-  const porSeveridade = useMemo(() => {
-    return [
-      {
-        label: "Leve",
-        total: ocorrencias.filter((o) => o.severidade === "leve").length,
-      },
-      {
-        label: "Moderada",
-        total: ocorrencias.filter((o) => o.severidade === "moderada").length,
-      },
-      {
-        label: "Grave",
-        total: ocorrencias.filter((o) => o.severidade === "grave").length,
-      },
-      {
-        label: "Sentinela",
-        total: ocorrencias.filter((o) => o.severidade === "sentinela").length,
-      },
-      {
-        label: "Não informada",
-        total: ocorrencias.filter((o) => !o.severidade).length,
-      },
-    ];
-  }, [ocorrencias]);
+      const matchStatus =
+        filtroStatus === "TODOS" ? true : item.status === filtroStatus;
 
-  const porSetorDestino = useMemo(() => {
-    return setores
-      .map((setor) => ({
-        nome: setor.nome,
-        total: ocorrencias.filter((o) => o.setor_destino_id === setor.id).length,
-      }))
-      .filter((item) => item.total > 0)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8);
-  }, [ocorrencias, setores]);
+      const matchGravidade =
+        filtroGravidade === "TODOS"
+          ? true
+          : item.gravidade === filtroGravidade;
 
-  const registrosRecentes = useMemo(() => {
-    return ocorrencias.slice(0, 8);
-  }, [ocorrencias]);
+      return matchSetor && matchStatus && matchGravidade;
+    });
+  }, [ocorrencias, filtroSetor, filtroStatus, filtroGravidade]);
 
-  function corStatus(status: StatusOcorrencia) {
-    switch (status) {
-      case "encerrada":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200";
-      case "aguardando_validacao_qualidade":
-        return "bg-amber-50 text-amber-700 border-amber-200";
-      case "plano_de_acao":
-        return "bg-blue-50 text-blue-700 border-blue-200";
-      case "em_analise":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200";
-      case "em_triagem_qualidade":
-        return "bg-violet-50 text-violet-700 border-violet-200";
-      case "reaberta":
-        return "bg-orange-50 text-orange-700 border-orange-200";
-      case "cancelada":
-        return "bg-rose-50 text-rose-700 border-rose-200";
-      default:
-        return "bg-slate-50 text-slate-700 border-slate-200";
+  const total = ocorrenciasFiltradas.length;
+  const abertas = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Aberta"
+  ).length;
+  const emAnalise = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Em Análise pela Qualidade"
+  ).length;
+  const encaminhadas = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Encaminhada para Liderança"
+  ).length;
+  const emTratativa = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Em Tratativa com a Liderança"
+  ).length;
+  const aguardandoValidacao = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Aguardando Validação da Qualidade"
+  ).length;
+  const concluidas = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Concluída"
+  ).length;
+  const reabertas = ocorrenciasFiltradas.filter(
+    (o) => o.status === "Reaberta"
+  ).length;
+
+  const porSetor = useMemo(() => {
+    const mapa: Record<string, number> = {};
+
+    for (const item of ocorrenciasFiltradas) {
+      const chave = item.setor_destino || "Não informado";
+      mapa[chave] = (mapa[chave] || 0) + 1;
     }
-  }
 
-  function nomeSetor(relacao: { nome: string } | null | undefined, id: string | null) {
-    if (relacao?.nome) return relacao.nome;
-    const setor = setores.find((s) => s.id === id);
-    return setor?.nome || "Não informado";
-  }
+    return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
+  }, [ocorrenciasFiltradas]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-          <p className="text-sm text-slate-600">Carregando dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  const porStatus = [
+    { titulo: "Abertas", valor: abertas },
+    { titulo: "Em análise", valor: emAnalise },
+    { titulo: "Encaminhadas", valor: encaminhadas },
+    { titulo: "Em tratativa", valor: emTratativa },
+    { titulo: "Aguardando validação", valor: aguardandoValidacao },
+    { titulo: "Concluídas", valor: concluidas },
+    { titulo: "Reabertas", valor: reabertas },
+  ];
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl p-6 md:p-8">
-        <section className="mb-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-cyan-900 p-8 text-white shadow-xl">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-cyan-200">
-                Gestão de Qualidade
-              </p>
-              <h1 className="mt-2 text-3xl font-bold">Dashboard Executivo</h1>
-              <p className="mt-3 max-w-3xl text-sm text-slate-200">
-                Visão consolidada das ocorrências, não conformidades, tratativas
-                e andamento operacional da Qualidade.
-              </p>
-            </div>
+    <div className="min-h-screen bg-slate-50">
+      <BarraSistema nome={profile?.nome || ""} role={profile?.role || ""} />
 
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/"
-                className="rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-              >
-                Página inicial
-              </Link>
-              <Link
-                href="/sistema"
-                className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-              >
-                Ir para o sistema
-              </Link>
-            </div>
-          </div>
-        </section>
+      <main className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-slate-800">
+            Dashboard de Ocorrências
+          </h2>
+          <p className="mt-2 text-slate-600">
+            {profile?.role === "lider"
+              ? `Visualização restrita ao setor: ${
+                  profile?.setor || "não informado"
+                }`
+              : "Visualização global com filtros por setor, status e gravidade."}
+          </p>
+        </div>
 
         {erro ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
             {erro}
           </div>
         ) : null}
 
-        <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <CardIndicador titulo="Total" valor={indicadores.total} />
-          <CardIndicador titulo="Abertas" valor={indicadores.abertas} />
-          <CardIndicador titulo="Triagem" valor={indicadores.triagem} />
-          <CardIndicador titulo="Em tratamento" valor={indicadores.tratamento} />
-          <CardIndicador titulo="Validação" valor={indicadores.validacao} />
-          <CardIndicador titulo="Encerradas" valor={indicadores.encerradas} />
-        </section>
+        {carregando ? (
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-slate-600">Carregando dashboard...</p>
+          </div>
+        ) : (
+          <>
+            <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <CardIndicador titulo="Total" valor={total} />
+              <CardIndicador titulo="Abertas" valor={abertas} />
+              <CardIndicador titulo="Em análise" valor={emAnalise} />
+              <CardIndicador titulo="Em tratativa" valor={emTratativa} />
+              <CardIndicador titulo="Concluídas" valor={concluidas} />
+            </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-6">
-            <Bloco titulo="Distribuição por status" descricao="Leitura rápida do andamento dos registros.">
-              <div className="grid gap-4 md:grid-cols-2">
-                {porStatus.map((item) => (
-                  <div
-                    key={item.status}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-lg font-semibold text-slate-800">
+                Filtros
+              </h3>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Setor
+                  </label>
+                  <select
+                    value={filtroSetor}
+                    onChange={(e) => setFiltroSetor(e.target.value)}
+                    disabled={!podeFiltrarTodosSetores(profile?.role)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-sky-600 disabled:bg-slate-100"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-800">
-                        {item.label}
-                      </p>
-                      <span className="text-2xl font-bold text-slate-900">
-                        {item.total}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Bloco>
+                    <option value="TODOS">Todos</option>
+                    {setoresDisponiveis.map((setor) => (
+                      <option key={setor} value={setor}>
+                        {setor}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <Bloco
-              titulo="Registros recentes"
-              descricao="Últimas ocorrências lançadas no sistema."
-            >
-              <div className="space-y-3">
-                {registrosRecentes.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    Nenhum registro encontrado.
-                  </p>
-                ) : (
-                  registrosRecentes.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <div className="mb-2 flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {item.codigo || `OC-${item.id}`}
-                          </p>
-                          <h3 className="mt-1 text-sm font-semibold text-slate-900">
-                            {item.titulo}
-                          </h3>
-                        </div>
-                        <span
-                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${corStatus(
-                            item.status
-                          )}`}
-                        >
-                          {STATUS_LABEL[item.status]}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Status
+                  </label>
+                  <select
+                    value={filtroStatus}
+                    onChange={(e) => setFiltroStatus(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-sky-600"
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="Aberta">Aberta</option>
+                    <option value="Em Análise pela Qualidade">
+                      Em Análise pela Qualidade
+                    </option>
+                    <option value="Encaminhada para Liderança">
+                      Encaminhada para Liderança
+                    </option>
+                    <option value="Em Tratativa com a Liderança">
+                      Em Tratativa com a Liderança
+                    </option>
+                    <option value="Aguardando Validação da Qualidade">
+                      Aguardando Validação da Qualidade
+                    </option>
+                    <option value="Concluída">Concluída</option>
+                    <option value="Reaberta">Reaberta</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Gravidade
+                  </label>
+                  <select
+                    value={filtroGravidade}
+                    onChange={(e) => setFiltroGravidade(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-sky-600"
+                  >
+                    <option value="TODOS">Todas</option>
+                    <option value="Leve">Leve</option>
+                    <option value="Moderada">Moderada</option>
+                    <option value="Grave">Grave</option>
+                    <option value="Sentinela">Sentinela</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="mb-4 text-lg font-semibold text-slate-800">
+                  Distribuição por setor
+                </h3>
+
+                <div className="space-y-3">
+                  {porSetor.length === 0 ? (
+                    <p className="text-slate-500">Nenhum dado encontrado.</p>
+                  ) : (
+                    porSetor.map(([setor, quantidade]) => (
+                      <div
+                        key={setor}
+                        className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                      >
+                        <span className="font-medium text-slate-700">
+                          {setor}
+                        </span>
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700">
+                          {quantidade}
                         </span>
                       </div>
-
-                      <div className="grid gap-2 text-xs text-slate-500 md:grid-cols-2">
-                        <span>
-                          <strong>Origem:</strong>{" "}
-                          {nomeSetor(item.setor_origem, item.setor_origem_id)}
-                        </span>
-                        <span>
-                          <strong>Destino:</strong>{" "}
-                          {nomeSetor(item.setor_destino, item.setor_destino_id)}
-                        </span>
-                        <span>
-                          <strong>Severidade:</strong>{" "}
-                          {item.severidade || "Não informada"}
-                        </span>
-                        <span>
-                          <strong>Prazo:</strong>{" "}
-                          {item.prazo_tratativa
-                            ? new Date(item.prazo_tratativa).toLocaleDateString(
-                                "pt-BR"
-                              )
-                            : "Não definido"}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </Bloco>
-          </div>
 
-          <div className="space-y-6">
-            <Bloco
-              titulo="Severidade"
-              descricao="Classificação dos registros lançados."
-            >
-              <div className="space-y-3">
-                {porSeveridade.map((item) => (
-                  <LinhaResumo key={item.label} label={item.label} valor={item.total} />
-                ))}
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="mb-4 text-lg font-semibold text-slate-800">
+                  Situação atual
+                </h3>
+
+                <div className="space-y-3">
+                  {porStatus.map((item) => (
+                    <LinhaResumo
+                      key={item.titulo}
+                      titulo={item.titulo}
+                      valor={item.valor}
+                    />
+                  ))}
+                </div>
               </div>
-            </Bloco>
+            </section>
 
-            <Bloco
-              titulo="Setores mais demandados"
-              descricao="Principais destinos de encaminhamento."
-            >
-              <div className="space-y-3">
-                {porSetorDestino.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    Ainda não há direcionamentos por setor.
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Últimas ocorrências
+                </h3>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
+                  {ocorrenciasFiltradas.length} registro(s)
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-slate-600">
+                      <th className="px-3 py-3">ID</th>
+                      <th className="px-3 py-3">Título</th>
+                      <th className="px-3 py-3">Setor destino</th>
+                      <th className="px-3 py-3">Status</th>
+                      <th className="px-3 py-3">Gravidade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ocorrenciasFiltradas.slice(0, 15).map((item) => (
+                      <tr key={item.id} className="border-b border-slate-100">
+                        <td className="px-3 py-3 font-semibold text-slate-700">
+                          #{item.id}
+                        </td>
+                        <td className="px-3 py-3 text-slate-700">
+                          {item.titulo}
+                        </td>
+                        <td className="px-3 py-3 text-slate-700">
+                          {item.setor_destino || "-"}
+                        </td>
+                        <td className="px-3 py-3 text-slate-700">
+                          {item.status || "-"}
+                        </td>
+                        <td className="px-3 py-3 text-slate-700">
+                          {item.gravidade || "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {ocorrenciasFiltradas.length === 0 ? (
+                  <p className="pt-4 text-slate-500">
+                    Nenhuma ocorrência encontrada.
                   </p>
-                ) : (
-                  porSetorDestino.map((item) => (
-                    <LinhaResumo key={item.nome} label={item.nome} valor={item.total} />
-                  ))
-                )}
+                ) : null}
               </div>
-            </Bloco>
-
-            <Bloco
-              titulo="Direcionamento"
-              descricao="Atalhos úteis para navegação principal."
-            >
-              <div className="grid gap-3">
-                <Link
-                  href="/sistema"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-                >
-                  Abrir módulo operacional
-                </Link>
-                <Link
-                  href="/"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-                >
-                  Voltar para a página inicial
-                </Link>
-              </div>
-            </Bloco>
-          </div>
-        </section>
-      </div>
-    </main>
+            </section>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
 
@@ -410,43 +390,23 @@ function CardIndicador({
 }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{titulo}</p>
-      <h3 className="mt-2 text-3xl font-bold text-slate-900">{valor}</h3>
+      <p className="text-sm font-medium text-slate-500">{titulo}</p>
+      <p className="mt-2 text-3xl font-bold text-slate-800">{valor}</p>
     </div>
   );
 }
 
-function Bloco({
-  titulo,
-  descricao,
-  children,
-}: {
-  titulo: string;
-  descricao: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-slate-900">{titulo}</h2>
-        <p className="text-sm text-slate-500">{descricao}</p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
 function LinhaResumo({
-  label,
+  titulo,
   valor,
 }: {
-  label: string;
+  titulo: string;
   valor: number;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-      <span className="text-sm text-slate-700">{label}</span>
-      <span className="text-lg font-bold text-slate-900">{valor}</span>
+    <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+      <span className="text-slate-700">{titulo}</span>
+      <span className="font-semibold text-slate-800">{valor}</span>
     </div>
   );
 }

@@ -1,108 +1,47 @@
 "use client";
 
-import Link from "next/link";
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/src/lib/supabase";
-import LogoutButton from "@/src/components/auth/LogoutButton";
+import { ReactNode, useEffect, useState } from "react";
+import BarraSistema from "../../src/components/BarraSistema";
+import { supabase } from "../../src/lib/supabase";
 
-const links = [
-  { href: "/sistema", label: "Visão Geral" },
-  { href: "/sistema/qualidade", label: "Qualidade" },
-  { href: "/sistema/lideranca", label: "Liderança" },
-  { href: "/sistema/indicadores", label: "Indicadores" },
-  { href: "/abrir-ocorrencia", label: "Abrir Ocorrência" },
-];
+type Profile = {
+  nome: string | null;
+  role: string | null;
+};
 
-export default function SistemaLayout({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const [carregandoSessao, setCarregandoSessao] = useState(true);
+export default function SistemaLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
-    async function verificar() {
+    async function carregarPerfil() {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (!session) {
-        router.push("/login");
-        return;
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("nome, role")
+        .eq("id", user.id)
+        .single();
+
+      if (data) {
+        setProfile(data);
       }
-
-      setCarregandoSessao(false);
     }
 
-    verificar();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push("/login");
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [router]);
-
-  if (carregandoSessao) {
-    return (
-      <div className="min-h-screen bg-slate-50 px-6 py-10">
-        <div className="mx-auto max-w-7xl rounded-2xl border border-slate-200 bg-white p-6 text-slate-500">
-          Verificando acesso...
-        </div>
-      </div>
-    );
-  }
+    carregarPerfil();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-              Sistema de Gestão de Qualidade
-            </p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">
-              Gestão hospitalar de ocorrências
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Plataforma com visão de Qualidade, Liderança, fluxo assistencial e indicadores.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <nav className="flex flex-wrap gap-2">
-              {links.map((link) => {
-                const ativo = pathname === link.href;
-
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                      ativo
-                        ? "border border-sky-200 bg-sky-50 text-sky-700"
-                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+    <div className="min-h-screen bg-emerald-50/40">
+      <BarraSistema nome={profile?.nome || ""} role={profile?.role || ""} />
+      {children}
     </div>
   );
 }
