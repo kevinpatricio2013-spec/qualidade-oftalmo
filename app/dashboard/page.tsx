@@ -1,989 +1,903 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../src/lib/supabase";
-
-type StatusOcorrencia =
-  | "Aberta"
-  | "Em análise pela Qualidade"
-  | "Direcionada ao Setor"
-  | "Em tratativa"
-  | "Aguardando validação da Qualidade"
-  | "Concluída";
-
-type Role = "qualidade" | "lideranca" | "diretoria";
-
-type Profile = {
-  id: string;
-  nome: string;
-  email: string;
-  role: Role;
-  setor: string | null;
-};
+import { supabase } from "../src/lib/supabase";
 
 type Ocorrencia = {
   id: number;
-  created_at: string;
-  updated_at: string;
   titulo: string;
   descricao: string;
   setor_origem: string;
-  setor_destino: string | null;
-  tipo_ocorrencia: string | null;
-  gravidade: string | null;
-  anonima: boolean;
-  status: StatusOcorrencia;
-  data_direcionamento: string | null;
-  data_inicio_tratativa: string | null;
-  data_envio_validacao: string | null;
-  data_conclusao: string | null;
-  acao_imediata: string | null;
-  analise_qualidade: string | null;
-  tratativa_setor: string | null;
-  validacao_qualidade: string | null;
-  criado_por: string | null;
-  criado_por_nome: string | null;
-  criado_por_email: string | null;
-};
-
-type HistoricoStatus = {
-  id: number;
-  ocorrencia_id: number;
+  gravidade: string;
+  tipo_ocorrencia: string;
+  setor_responsavel: string | null;
+  status: string;
+  resposta_lideranca: string | null;
+  validado_qualidade: boolean;
   created_at: string;
-  status_anterior: StatusOcorrencia | null;
-  status_novo: StatusOcorrencia;
-  observacao: string | null;
 };
 
-const setores = [
-  "Agendamento",
-  "Autorização",
-  "Centro Cirúrgico",
-  "CME",
-  "Comissões Hospitalares",
-  "Compras",
-  "Consultório Médico",
-  "Contas Médicas",
-  "Controlador de Acesso",
-  "Diretoria",
-  "Facilities",
-  "Farmácia / OPME",
-  "Faturamento",
-  "Financeiro",
-  "Fornecedores Externos",
-  "Gestão da Informação",
-  "Gestão de Pessoas",
-  "Higiene",
-  "Qualidade",
-  "Recepção",
-  "Engenharia Clínica",
-  "Pronto Atendimento",
-];
+type Profile = {
+  id: string;
+  nome: string | null;
+  email: string | null;
+  role: string;
+  setor: string | null;
+};
 
 export default function DashboardPage() {
   const router = useRouter();
 
+  const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [carregandoAcesso, setCarregandoAcesso] = useState(true);
-
-  const [titulo, setTitulo] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [setorOrigem, setSetorOrigem] = useState("");
-  const [tipoOcorrencia, setTipoOcorrencia] = useState("");
-  const [gravidade, setGravidade] = useState("");
-
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [historico, setHistorico] = useState<HistoricoStatus[]>([]);
-  const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
-
-  const [analiseQualidade, setAnaliseQualidade] = useState("");
-  const [setorDestino, setSetorDestino] = useState("");
-  const [tratativaSetor, setTratativaSetor] = useState("");
-  const [validacaoQualidade, setValidacaoQualidade] = useState("");
-
-  const [carregando, setCarregando] = useState(false);
-  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    validarAcesso();
+    validarSessao();
   }, []);
 
-  async function validarAcesso() {
-    setCarregandoAcesso(true);
-    setErro("");
+  async function validarSessao() {
+    try {
+      setLoading(true);
+      setProfileLoading(true);
+      setErro("");
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session?.user) {
-      router.replace("/");
-      return;
-    }
+      if (!session) {
+        router.push("/login");
+        return;
+      }
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", session.user.id)
-      .single();
+      const { data: perfil, error: perfilError } = await supabase
+        .from("profiles")
+        .select("id, nome, email, role, setor")
+        .eq("id", session.user.id)
+        .single();
 
-    if (profileError || !profileData) {
-      setErro("Perfil do usuário não encontrado.");
-      setCarregandoAcesso(false);
-      return;
-    }
+      if (perfilError || !perfil) {
+        setErro("Perfil do usuário não encontrado.");
+        setProfileLoading(false);
+        setLoading(false);
+        return;
+      }
 
-    const profileReal = profileData as Profile;
-    setProfile(profileReal);
+      setProfile(perfil);
+      setProfileLoading(false);
 
-    await carregarOcorrencias(profileReal);
-    setCarregandoAcesso(false);
-  }
+      let query = supabase
+        .from("ocorrencias")
+        .select(
+          "id, titulo, descricao, setor_origem, gravidade, tipo_ocorrencia, setor_responsavel, status, resposta_lideranca, validado_qualidade, created_at"
+        )
+        .order("created_at", { ascending: false });
 
-  async function carregarOcorrencias(profileAtual?: Profile) {
-    const perfil = profileAtual || profile;
-    if (!perfil) return;
+      if (perfil.role === "lider" && perfil.setor) {
+        query = query.eq("setor_responsavel", perfil.setor);
+      }
 
-    setCarregando(true);
-    setErro("");
+      const { data, error } = await query;
 
-    let query = supabase.from("ocorrencias").select("*");
+      if (error) {
+        setErro(`Erro ao carregar dashboard: ${error.message}`);
+        setLoading(false);
+        return;
+      }
 
-    if (perfil.role === "lideranca" && perfil.setor) {
-      query = query.eq("setor_destino", perfil.setor);
-    }
-
-    const { data, error } = await query.order("created_at", { ascending: false });
-
-    if (error) {
-      setErro("Não foi possível carregar as ocorrências: " + error.message);
-      setCarregando(false);
-      return;
-    }
-
-    setOcorrencias((data || []) as Ocorrencia[]);
-    setCarregando(false);
-  }
-
-  async function carregarHistorico(ocorrenciaId: number) {
-    const { data, error } = await supabase
-      .from("historico_status_ocorrencia")
-      .select("*")
-      .eq("ocorrencia_id", ocorrenciaId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setErro("Não foi possível carregar o histórico: " + error.message);
-      return;
-    }
-
-    setHistorico((data || []) as HistoricoStatus[]);
-  }
-
-  async function buscarOcorrenciaPorId(id: number) {
-    const { data, error } = await supabase
-      .from("ocorrencias")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) {
-      setErro("Erro ao recarregar ocorrência: " + error.message);
-      return null;
-    }
-
-    return data as Ocorrencia;
-  }
-
-  async function selecionarOcorrencia(ocorrencia: Ocorrencia) {
-    setOcorrenciaSelecionada(ocorrencia);
-    setAnaliseQualidade(ocorrencia.analise_qualidade || "");
-    setSetorDestino(ocorrencia.setor_destino || "");
-    setTratativaSetor(ocorrencia.tratativa_setor || "");
-    setValidacaoQualidade(ocorrencia.validacao_qualidade || "");
-    await carregarHistorico(ocorrencia.id);
-  }
-
-  async function criarOcorrencia() {
-    if (!profile) return;
-
-    if (!titulo.trim() || !descricao.trim() || !setorOrigem.trim()) {
-      setErro("Preencha título, descrição e setor de origem.");
-      return;
-    }
-
-    setSalvando(true);
-    setErro("");
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { error } = await supabase.from("ocorrencias").insert({
-      titulo: titulo.trim(),
-      descricao: descricao.trim(),
-      setor_origem: setorOrigem,
-      tipo_ocorrencia: tipoOcorrencia || null,
-      gravidade: gravidade || null,
-      anonima: true,
-      criado_por: user?.id || null,
-      criado_por_nome: profile.nome,
-      criado_por_email: profile.email,
-    });
-
-    if (error) {
-      setErro("Erro ao criar ocorrência: " + error.message);
-      setSalvando(false);
-      return;
-    }
-
-    setTitulo("");
-    setDescricao("");
-    setSetorOrigem("");
-    setTipoOcorrencia("");
-    setGravidade("");
-    setSalvando(false);
-
-    await carregarOcorrencias();
-  }
-
-  async function salvarAnalise() {
-    if (!ocorrenciaSelecionada) return;
-
-    setSalvando(true);
-    setErro("");
-
-    const { error } = await supabase
-      .from("ocorrencias")
-      .update({
-        analise_qualidade: analiseQualidade || null,
-        setor_destino: setorDestino || null,
-      })
-      .eq("id", ocorrenciaSelecionada.id);
-
-    if (error) {
-      setErro("Erro ao salvar análise da qualidade: " + error.message);
-      setSalvando(false);
-      return;
-    }
-
-    setSalvando(false);
-    await carregarOcorrencias();
-
-    const atualizada = await buscarOcorrenciaPorId(ocorrenciaSelecionada.id);
-    if (atualizada) {
-      await selecionarOcorrencia(atualizada);
+      setOcorrencias((data as Ocorrencia[]) || []);
+    } catch (err: any) {
+      setErro(err?.message || "Erro ao carregar dashboard.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function salvarTratativa() {
-    if (!ocorrenciaSelecionada) return;
-
-    setSalvando(true);
-    setErro("");
-
-    const { error } = await supabase
-      .from("ocorrencias")
-      .update({
-        tratativa_setor: tratativaSetor || null,
-      })
-      .eq("id", ocorrenciaSelecionada.id);
-
-    if (error) {
-      setErro("Erro ao salvar tratativa: " + error.message);
-      setSalvando(false);
-      return;
-    }
-
-    setSalvando(false);
-    await carregarOcorrencias();
-
-    const atualizada = await buscarOcorrenciaPorId(ocorrenciaSelecionada.id);
-    if (atualizada) {
-      await selecionarOcorrencia(atualizada);
-    }
-  }
-
-  async function salvarValidacao() {
-    if (!ocorrenciaSelecionada) return;
-
-    setSalvando(true);
-    setErro("");
-
-    const { error } = await supabase
-      .from("ocorrencias")
-      .update({
-        validacao_qualidade: validacaoQualidade || null,
-      })
-      .eq("id", ocorrenciaSelecionada.id);
-
-    if (error) {
-      setErro("Erro ao salvar validação: " + error.message);
-      setSalvando(false);
-      return;
-    }
-
-    setSalvando(false);
-    await carregarOcorrencias();
-
-    const atualizada = await buscarOcorrenciaPorId(ocorrenciaSelecionada.id);
-    if (atualizada) {
-      await selecionarOcorrencia(atualizada);
-    }
-  }
-
-  async function sairSistema() {
+  async function handleLogout() {
     await supabase.auth.signOut();
-    router.replace("/");
+    router.push("/login");
   }
 
   const indicadores = useMemo(() => {
+    const total = ocorrencias.length;
+
+    const emAnalise = ocorrencias.filter(
+      (item) => item.status === "Em análise pela Qualidade"
+    ).length;
+
+    const direcionadas = ocorrencias.filter(
+      (item) => item.status === "Direcionada para Liderança"
+    ).length;
+
+    const emTratativa = ocorrencias.filter(
+      (item) => item.status === "Em tratativa pela Liderança"
+    ).length;
+
+    const aguardandoValidacao = ocorrencias.filter(
+      (item) => item.status === "Aguardando validação da Qualidade"
+    ).length;
+
+    const encerradas = ocorrencias.filter(
+      (item) => item.status === "Encerrada"
+    ).length;
+
+    const graves = ocorrencias.filter(
+      (item) => item.gravidade === "Grave" || item.gravidade === "Alta"
+    ).length;
+
     return {
-      total: ocorrencias.length,
-      abertas: ocorrencias.filter((o) => o.status === "Aberta").length,
-      analise: ocorrencias.filter((o) => o.status === "Em análise pela Qualidade").length,
-      direcionadas: ocorrencias.filter((o) => o.status === "Direcionada ao Setor").length,
-      tratativa: ocorrencias.filter((o) => o.status === "Em tratativa").length,
-      validacao: ocorrencias.filter((o) => o.status === "Aguardando validação da Qualidade").length,
-      concluidas: ocorrencias.filter((o) => o.status === "Concluída").length,
+      total,
+      emAnalise,
+      direcionadas,
+      emTratativa,
+      aguardandoValidacao,
+      encerradas,
+      graves,
     };
   }, [ocorrencias]);
 
-  if (carregandoAcesso) {
+  const recentes = useMemo(() => {
+    return ocorrencias.slice(0, 6);
+  }, [ocorrencias]);
+
+  function formatarData(data: string) {
+    if (!data) return "-";
+    return new Date(data).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+
+  function corStatus(status: string) {
+    switch (status) {
+      case "Em análise pela Qualidade":
+        return {
+          background: "#eff6ff",
+          color: "#1d4ed8",
+          border: "1px solid #bfdbfe",
+        };
+      case "Direcionada para Liderança":
+        return {
+          background: "#ecfeff",
+          color: "#0f766e",
+          border: "1px solid #a5f3fc",
+        };
+      case "Em tratativa pela Liderança":
+        return {
+          background: "#fefce8",
+          color: "#a16207",
+          border: "1px solid #fde68a",
+        };
+      case "Aguardando validação da Qualidade":
+        return {
+          background: "#fff7ed",
+          color: "#c2410c",
+          border: "1px solid #fdba74",
+        };
+      case "Encerrada":
+        return {
+          background: "#f0fdf4",
+          color: "#15803d",
+          border: "1px solid #bbf7d0",
+        };
+      default:
+        return {
+          background: "#f8fafc",
+          color: "#334155",
+          border: "1px solid #cbd5e1",
+        };
+    }
+  }
+
+  if (loading || profileLoading) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: "#f4f8f6",
-          color: "#17372d",
-          fontSize: 18,
-          fontWeight: 700,
-        }}
-      >
-        Carregando acesso do sistema...
+      <main style={styles.loadingPage}>
+        <div style={styles.loadingCard}>Carregando dashboard...</div>
       </main>
     );
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #f3f8f6 0%, #edf5f1 100%)",
-        padding: 24,
-      }}
-    >
-      <div style={{ maxWidth: 1500, margin: "0 auto" }}>
-        <header
-          style={{
-            background: "#ffffff",
-            border: "1px solid #dcefe6",
-            borderRadius: 28,
-            padding: 24,
-            boxShadow: "0 16px 40px rgba(28, 76, 60, 0.06)",
-            marginBottom: 24,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 20,
-              flexWrap: "wrap",
-            }}
-          >
+    <main style={styles.page}>
+      <div style={styles.backgroundShapeOne} />
+      <div style={styles.backgroundShapeTwo} />
+
+      <section style={styles.wrapper}>
+        <aside style={styles.sidebar}>
+          <div>
+            <div style={styles.sidebarBrand}>
+              <div style={styles.sidebarLogo}>Q</div>
+              <div>
+                <div style={styles.sidebarTitle}>Gestão da Qualidade</div>
+                <div style={styles.sidebarSubtitle}>Painel institucional</div>
+              </div>
+            </div>
+
+            <nav style={styles.nav}>
+              <Link href="/dashboard" style={{ ...styles.navItem, ...styles.navItemActive }}>
+                Dashboard
+              </Link>
+              <Link href="/sistema/qualidade" style={styles.navItem}>
+                Qualidade
+              </Link>
+              <Link href="/sistema/lideranca" style={styles.navItem}>
+                Liderança
+              </Link>
+              <Link href="/ocorrencia/nova" style={styles.navItem}>
+                Nova Ocorrência
+              </Link>
+            </nav>
+          </div>
+
+          <button onClick={handleLogout} style={styles.logoutButton}>
+            Sair
+          </button>
+        </aside>
+
+        <section style={styles.content}>
+          <header style={styles.header}>
             <div>
-              <div
-                style={{
-                  display: "inline-flex",
-                  padding: "8px 14px",
-                  borderRadius: 999,
-                  background: "#eff8f4",
-                  border: "1px solid #d5e9df",
-                  color: "#2b6d58",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  marginBottom: 14,
-                }}
-              >
-                Ambiente assistencial e administrativo
-              </div>
-
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: 30,
-                  color: "#17372d",
-                }}
-              >
-                Sistema de Gestão da Qualidade
-              </h1>
-
-              <p
-                style={{
-                  marginTop: 10,
-                  marginBottom: 0,
-                  color: "#5a796e",
-                  lineHeight: 1.7,
-                  maxWidth: 760,
-                }}
-              >
-                Painel profissional para registro, análise, tratativa e validação
-                de ocorrências com fluxo automático e controle por perfil.
+              <div style={styles.badge}>Dashboard</div>
+              <h1 style={styles.title}>Visão geral das ocorrências</h1>
+              <p style={styles.subtitle}>
+                Acompanhe o volume de registros, o andamento do fluxo entre
+                Qualidade e Liderança e os principais números do sistema.
               </p>
             </div>
 
-            <div
-              style={{
-                minWidth: 320,
-                background: "#f9fcfb",
-                border: "1px solid #dcefe6",
-                borderRadius: 20,
-                padding: 16,
-              }}
-            >
-              <div style={{ fontSize: 12, color: "#5c7a6f", marginBottom: 6 }}>
-                Usuário autenticado
+            <div style={styles.profileCard}>
+              <div style={styles.profileLabel}>Usuário conectado</div>
+              <div style={styles.profileName}>
+                {profile?.nome || profile?.email || "Usuário"}
               </div>
-
-              <div style={{ fontWeight: 700, fontSize: 17, color: "#18372e" }}>
-                {profile?.nome || "-"}
+              <div style={styles.profileMeta}>
+                Perfil: {profile?.role || "-"} {profile?.setor ? `• ${profile.setor}` : ""}
               </div>
-
-              <div style={{ color: "#567267", marginTop: 4 }}>
-                {profile?.email || "-"}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  display: "inline-flex",
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  background: "#edf7f2",
-                  color: "#2d6a57",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textTransform: "capitalize",
-                }}
-              >
-                Perfil: {profile?.role || "-"}
-              </div>
-
-              {profile?.setor && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    display: "inline-flex",
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    background: "#f3f8f6",
-                    color: "#315f50",
-                    fontWeight: 700,
-                    fontSize: 12,
-                  }}
-                >
-                  Setor: {profile.setor}
-                </div>
-              )}
-
-              <button
-                onClick={sairSistema}
-                style={{
-                  marginTop: 16,
-                  width: "100%",
-                  border: "1px solid #d8e7df",
-                  borderRadius: 14,
-                  padding: "12px 14px",
-                  background: "#ffffff",
-                  color: "#285846",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Sair do sistema
-              </button>
             </div>
-          </div>
-        </header>
+          </header>
 
-        {erro && (
-          <div
-            style={{
-              marginBottom: 20,
-              padding: "14px 16px",
-              borderRadius: 16,
-              background: "#fff3f3",
-              border: "1px solid #efd0d0",
-              color: "#8d3131",
-              fontWeight: 600,
-            }}
-          >
-            {erro}
-          </div>
-        )}
+          {erro ? <div style={styles.errorBox}>{erro}</div> : null}
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
-          <IndicadorCard titulo="Total" valor={indicadores.total} />
-          <IndicadorCard titulo="Abertas" valor={indicadores.abertas} />
-          <IndicadorCard titulo="Em análise" valor={indicadores.analise} />
-          <IndicadorCard titulo="Direcionadas" valor={indicadores.direcionadas} />
-          <IndicadorCard titulo="Em tratativa" valor={indicadores.tratativa} />
-          <IndicadorCard titulo="Concluídas" valor={indicadores.concluidas} />
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "420px 1fr 1.1fr",
-            gap: 24,
-            alignItems: "start",
-          }}
-        >
-          <div style={panelStyle}>
-            <div style={panelHeaderStyle}>
-              <h2 style={panelTitleStyle}>Nova ocorrência</h2>
-              <p style={panelTextStyle}>
-                Registro inicial da ocorrência com padrão institucional.
-              </p>
+          <section style={styles.indicatorGrid}>
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Total de ocorrências</div>
+              <div style={styles.indicatorValue}>{indicadores.total}</div>
             </div>
 
-            <div style={{ display: "grid", gap: 14 }}>
-              <div>
-                <label style={labelStyle}>Título</label>
-                <input
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  placeholder="Descreva o tema principal"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Descrição</label>
-                <textarea
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Detalhe a ocorrência registrada"
-                  rows={5}
-                  style={textareaStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Setor de origem</label>
-                <select
-                  value={setorOrigem}
-                  onChange={(e) => setSetorOrigem(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="">Selecione</option>
-                  {setores.map((setor) => (
-                    <option key={setor} value={setor}>
-                      {setor}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Tipo de ocorrência</label>
-                <input
-                  value={tipoOcorrencia}
-                  onChange={(e) => setTipoOcorrencia(e.target.value)}
-                  placeholder="Ex.: Não conformidade, evento, falha de processo"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Gravidade</label>
-                <select
-                  value={gravidade}
-                  onChange={(e) => setGravidade(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="">Selecione</option>
-                  <option value="Leve">Leve</option>
-                  <option value="Moderada">Moderada</option>
-                  <option value="Grave">Grave</option>
-                </select>
-              </div>
-
-              <button
-                onClick={criarOcorrencia}
-                disabled={salvando}
-                style={buttonPrimary}
-              >
-                {salvando ? "Salvando..." : "Registrar ocorrência"}
-              </button>
-            </div>
-          </div>
-
-          <div style={panelStyle}>
-            <div style={panelHeaderStyle}>
-              <h2 style={panelTitleStyle}>Ocorrências registradas</h2>
-              <p style={panelTextStyle}>
-                Relação de ocorrências disponíveis conforme o perfil autenticado.
-              </p>
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Em análise</div>
+              <div style={styles.indicatorValue}>{indicadores.emAnalise}</div>
             </div>
 
-            {carregando ? (
-              <p style={panelTextStyle}>Carregando...</p>
-            ) : ocorrencias.length === 0 ? (
-              <p style={panelTextStyle}>Nenhuma ocorrência cadastrada.</p>
-            ) : (
-              <div style={{ display: "grid", gap: 12 }}>
-                {ocorrencias.map((ocorrencia) => (
-                  <button
-                    key={ocorrencia.id}
-                    onClick={() => selecionarOcorrencia(ocorrencia)}
-                    style={{
-                      textAlign: "left",
-                      border:
-                        ocorrenciaSelecionada?.id === ocorrencia.id
-                          ? "2px solid #5d9d84"
-                          : "1px solid #dcefe6",
-                      background:
-                        ocorrenciaSelecionada?.id === ocorrencia.id
-                          ? "#f4fbf7"
-                          : "#fbfefd",
-                      borderRadius: 18,
-                      padding: 16,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 16,
-                        color: "#17372d",
-                      }}
-                    >
-                      {ocorrencia.titulo}
-                    </div>
-
-                    <div style={{ marginTop: 8, color: "#5b786d", fontSize: 14 }}>
-                      Origem: {ocorrencia.setor_origem}
-                    </div>
-
-                    <div style={{ marginTop: 4, color: "#5b786d", fontSize: 14 }}>
-                      Destino: {ocorrencia.setor_destino || "-"}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 4,
-                        color: "#5b786d",
-                        fontSize: 14,
-                      }}
-                    >
-                      Aberta por: {ocorrencia.criado_por_nome || "Usuário"}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "inline-flex",
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        background: "#edf7f2",
-                        color: "#2d6b57",
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {ocorrencia.status}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div style={panelStyle}>
-            <div style={panelHeaderStyle}>
-              <h2 style={panelTitleStyle}>Tratativa e validação</h2>
-              <p style={panelTextStyle}>
-                Fluxo institucional com evolução automática de status.
-              </p>
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Direcionadas</div>
+              <div style={styles.indicatorValue}>{indicadores.direcionadas}</div>
             </div>
 
-            {!ocorrenciaSelecionada ? (
-              <p style={panelTextStyle}>
-                Selecione uma ocorrência para abrir o detalhamento.
-              </p>
-            ) : (
-              <div style={{ display: "grid", gap: 18 }}>
-                <div
-                  style={{
-                    border: "1px solid #dcefe6",
-                    borderRadius: 18,
-                    padding: 16,
-                    background: "#fbfefd",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: 18, color: "#17372d" }}>
-                    {ocorrenciaSelecionada.titulo}
-                  </div>
-                  <p
-                    style={{
-                      marginTop: 10,
-                      marginBottom: 0,
-                      color: "#5a786d",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    {ocorrenciaSelecionada.descricao}
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Em tratativa</div>
+              <div style={styles.indicatorValue}>{indicadores.emTratativa}</div>
+            </div>
+
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Aguardando validação</div>
+              <div style={styles.indicatorValue}>
+                {indicadores.aguardandoValidacao}
+              </div>
+            </div>
+
+            <div style={styles.indicatorCard}>
+              <div style={styles.indicatorLabel}>Encerradas</div>
+              <div style={styles.indicatorValue}>{indicadores.encerradas}</div>
+            </div>
+
+            <div style={styles.indicatorCardWide}>
+              <div style={styles.indicatorLabel}>Ocorrências de maior gravidade</div>
+              <div style={styles.indicatorValue}>{indicadores.graves}</div>
+              <div style={styles.indicatorHint}>
+                Consideradas: Alta e Grave
+              </div>
+            </div>
+          </section>
+
+          <section style={styles.sectionGrid}>
+            <div style={styles.panel}>
+              <div style={styles.panelHeader}>
+                <div>
+                  <h2 style={styles.panelTitle}>Acessos rápidos</h2>
+                  <p style={styles.panelText}>
+                    Navegue rapidamente para as áreas principais do sistema.
                   </p>
+                </div>
+              </div>
 
-                  <div style={{ marginTop: 14, display: "grid", gap: 6, color: "#45655a" }}>
-                    <div><strong>Setor origem:</strong> {ocorrenciaSelecionada.setor_origem}</div>
-                    <div><strong>Setor destino:</strong> {ocorrenciaSelecionada.setor_destino || "-"}</div>
-                    <div><strong>Status atual:</strong> {ocorrenciaSelecionada.status}</div>
+              <div style={styles.quickGrid}>
+                <Link href="/sistema" style={styles.quickCard}>
+                  <div style={styles.quickTitle}>Painel do Sistema</div>
+                  <div style={styles.quickText}>
+                    Acessar a área principal autenticada com menu lateral.
+                  </div>
+                </Link>
+
+                <Link href="/sistema/qualidade" style={styles.quickCard}>
+                  <div style={styles.quickTitle}>Área da Qualidade</div>
+                  <div style={styles.quickText}>
+                    Analisar, direcionar, validar e encerrar ocorrências.
+                  </div>
+                </Link>
+
+                <Link href="/sistema/lideranca" style={styles.quickCard}>
+                  <div style={styles.quickTitle}>Área da Liderança</div>
+                  <div style={styles.quickText}>
+                    Tratar ocorrências do setor e registrar 5W2H.
+                  </div>
+                </Link>
+
+                <Link href="/ocorrencia/nova" style={styles.quickCard}>
+                  <div style={styles.quickTitle}>Nova Ocorrência</div>
+                  <div style={styles.quickText}>
+                    Formulário público para registro sem necessidade de login.
+                  </div>
+                </Link>
+              </div>
+            </div>
+
+            <div style={styles.panel}>
+              <div style={styles.panelHeader}>
+                <div>
+                  <h2 style={styles.panelTitle}>Resumo do fluxo</h2>
+                  <p style={styles.panelText}>
+                    Modelo operacional que o sistema segue hoje.
+                  </p>
+                </div>
+              </div>
+
+              <div style={styles.flowList}>
+                <div style={styles.flowItem}>
+                  <div style={styles.flowStep}>1</div>
+                  <div>
+                    <div style={styles.flowTitle}>Registro público</div>
+                    <div style={styles.flowText}>
+                      O colaborador registra a ocorrência sem login.
+                    </div>
                   </div>
                 </div>
 
-                <div style={boxStyle}>
-                  <h3 style={sectionTitleStyle}>1. Análise da Qualidade</h3>
-                  <textarea
-                    value={analiseQualidade}
-                    onChange={(e) => setAnaliseQualidade(e.target.value)}
-                    rows={4}
-                    placeholder="Registrar análise da qualidade"
-                    style={textareaStyle}
-                    disabled={profile?.role === "lideranca"}
-                  />
-
-                  <select
-                    value={setorDestino}
-                    onChange={(e) => setSetorDestino(e.target.value)}
-                    style={inputStyle}
-                    disabled={profile?.role === "lideranca"}
-                  >
-                    <option value="">Selecionar setor destino</option>
-                    {setores.map((setor) => (
-                      <option key={setor} value={setor}>
-                        {setor}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={salvarAnalise}
-                    disabled={salvando || profile?.role === "lideranca"}
-                    style={buttonPrimary}
-                  >
-                    Salvar análise e direcionamento
-                  </button>
-                </div>
-
-                <div style={boxStyle}>
-                  <h3 style={sectionTitleStyle}>2. Tratativa do Setor</h3>
-                  <textarea
-                    value={tratativaSetor}
-                    onChange={(e) => setTratativaSetor(e.target.value)}
-                    rows={4}
-                    placeholder="Registrar a tratativa executada pelo setor"
-                    style={textareaStyle}
-                  />
-                  <button onClick={salvarTratativa} disabled={salvando} style={buttonPrimary}>
-                    Salvar tratativa
-                  </button>
-                </div>
-
-                <div style={boxStyle}>
-                  <h3 style={sectionTitleStyle}>3. Validação da Qualidade</h3>
-                  <textarea
-                    value={validacaoQualidade}
-                    onChange={(e) => setValidacaoQualidade(e.target.value)}
-                    rows={4}
-                    placeholder="Ex.: evidências recebidas e validadas / Concluída"
-                    style={textareaStyle}
-                    disabled={profile?.role === "lideranca"}
-                  />
-                  <button
-                    onClick={salvarValidacao}
-                    disabled={salvando || profile?.role === "lideranca"}
-                    style={buttonPrimary}
-                  >
-                    Salvar validação
-                  </button>
-                </div>
-
-                <div style={boxStyle}>
-                  <h3 style={sectionTitleStyle}>Histórico automático</h3>
-
-                  {historico.length === 0 ? (
-                    <p style={panelTextStyle}>Nenhum histórico disponível.</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {historico.map((item) => (
-                        <div
-                          key={item.id}
-                          style={{
-                            border: "1px solid #dcefe6",
-                            borderRadius: 16,
-                            padding: 12,
-                            background: "#fbfefd",
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, color: "#17372d" }}>
-                            {item.status_anterior
-                              ? `${item.status_anterior} → ${item.status_novo}`
-                              : item.status_novo}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 13,
-                              color: "#607c71",
-                            }}
-                          >
-                            {new Date(item.created_at).toLocaleString("pt-BR")}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 6,
-                              color: "#4e6d62",
-                              lineHeight: 1.6,
-                            }}
-                          >
-                            {item.observacao || "-"}
-                          </div>
-                        </div>
-                      ))}
+                <div style={styles.flowItem}>
+                  <div style={styles.flowStep}>2</div>
+                  <div>
+                    <div style={styles.flowTitle}>Análise da Qualidade</div>
+                    <div style={styles.flowText}>
+                      A Qualidade recebe, analisa e define o setor responsável.
                     </div>
-                  )}
+                  </div>
+                </div>
+
+                <div style={styles.flowItem}>
+                  <div style={styles.flowStep}>3</div>
+                  <div>
+                    <div style={styles.flowTitle}>Tratativa da Liderança</div>
+                    <div style={styles.flowText}>
+                      A liderança trata a ocorrência e registra resposta e 5W2H.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.flowItem}>
+                  <div style={styles.flowStep}>4</div>
+                  <div>
+                    <div style={styles.flowTitle}>Validação final</div>
+                    <div style={styles.flowText}>
+                      A Qualidade valida o retorno e encerra a ocorrência.
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section style={styles.panel}>
+            <div style={styles.panelHeader}>
+              <div>
+                <h2 style={styles.panelTitle}>Ocorrências recentes</h2>
+                <p style={styles.panelText}>
+                  Últimos registros visíveis para o perfil conectado.
+                </p>
+              </div>
+            </div>
+
+            {recentes.length === 0 ? (
+              <div style={styles.emptyBox}>
+                Nenhuma ocorrência encontrada até o momento.
+              </div>
+            ) : (
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>ID</th>
+                      <th style={styles.th}>Título</th>
+                      <th style={styles.th}>Tipo</th>
+                      <th style={styles.th}>Setor de origem</th>
+                      <th style={styles.th}>Gravidade</th>
+                      <th style={styles.th}>Status</th>
+                      <th style={styles.th}>Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentes.map((item) => (
+                      <tr key={item.id} style={styles.tr}>
+                        <td style={styles.td}>#{item.id}</td>
+                        <td style={styles.tdStrong}>{item.titulo}</td>
+                        <td style={styles.td}>{item.tipo_ocorrencia}</td>
+                        <td style={styles.td}>{item.setor_origem}</td>
+                        <td style={styles.td}>{item.gravidade}</td>
+                        <td style={styles.td}>
+                          <span style={{ ...styles.statusPill, ...corStatus(item.status) }}>
+                            {item.status}
+                          </span>
+                        </td>
+                        <td style={styles.td}>{formatarData(item.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
+          </section>
         </section>
-      </div>
+      </section>
     </main>
   );
 }
 
-function IndicadorCard({ titulo, valor }: { titulo: string; valor: number }) {
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #dcefe6",
-        borderRadius: 22,
-        padding: 18,
-        boxShadow: "0 10px 24px rgba(25, 70, 56, 0.05)",
-      }}
-    >
-      <div style={{ fontSize: 13, color: "#5f7d72", fontWeight: 600 }}>{titulo}</div>
-      <div
-        style={{
-          fontSize: 30,
-          fontWeight: 800,
-          color: "#17372d",
-          marginTop: 8,
-        }}
-      >
-        {valor}
-      </div>
-    </div>
-  );
-}
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "linear-gradient(180deg, #eff6ff 0%, #f8fbff 55%, #eef5ff 100%)",
+    position: "relative",
+    overflow: "hidden",
+    fontFamily: 'Inter, Arial, "Segoe UI", sans-serif',
+    padding: 20,
+  },
 
-const panelStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #dcefe6",
-  borderRadius: 28,
-  padding: 22,
-  boxShadow: "0 16px 40px rgba(28, 76, 60, 0.06)",
-};
+  loadingPage: {
+    minHeight: "100vh",
+    background:
+      "linear-gradient(180deg, #eff6ff 0%, #f8fbff 55%, #eef5ff 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: 'Inter, Arial, "Segoe UI", sans-serif',
+    padding: 24,
+  },
 
-const panelHeaderStyle: React.CSSProperties = {
-  marginBottom: 18,
-};
+  loadingCard: {
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    padding: "18px 22px",
+    borderRadius: 18,
+    color: "#1e3a8a",
+    fontWeight: 700,
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.08)",
+  },
 
-const panelTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 22,
-  color: "#17372d",
-};
+  backgroundShapeOne: {
+    position: "absolute",
+    top: -120,
+    right: -120,
+    width: 280,
+    height: 280,
+    borderRadius: "50%",
+    background: "rgba(59, 130, 246, 0.10)",
+    filter: "blur(10px)",
+  },
 
-const panelTextStyle: React.CSSProperties = {
-  marginTop: 8,
-  marginBottom: 0,
-  color: "#5d7b70",
-  lineHeight: 1.7,
-};
+  backgroundShapeTwo: {
+    position: "absolute",
+    bottom: -120,
+    left: -120,
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(14, 165, 233, 0.10)",
+    filter: "blur(10px)",
+  },
 
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  marginBottom: 8,
-  fontSize: 14,
-  fontWeight: 700,
-  color: "#264d40",
-};
+  wrapper: {
+    maxWidth: 1400,
+    margin: "0 auto",
+    display: "grid",
+    gridTemplateColumns: "280px 1fr",
+    gap: 20,
+    position: "relative",
+    zIndex: 1,
+  },
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "13px 15px",
-  borderRadius: 14,
-  border: "1px solid #cfe3d9",
-  background: "#fbfefd",
-  fontSize: 14,
-  color: "#17372d",
-  outline: "none",
-};
+  sidebar: {
+    minHeight: "calc(100vh - 40px)",
+    background: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(10px)",
+    border: "1px solid #dbeafe",
+    borderRadius: 26,
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+    padding: 22,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    position: "sticky",
+    top: 20,
+  },
 
-const textareaStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "13px 15px",
-  borderRadius: 14,
-  border: "1px solid #cfe3d9",
-  background: "#fbfefd",
-  fontSize: 14,
-  color: "#17372d",
-  outline: "none",
-  resize: "vertical",
-};
+  sidebarBrand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 28,
+  },
 
-const buttonPrimary: React.CSSProperties = {
-  border: "none",
-  borderRadius: 16,
-  padding: "14px 16px",
-  background: "linear-gradient(135deg, #4f9a7a 0%, #2f7a60 100%)",
-  color: "#ffffff",
-  fontSize: 14,
-  fontWeight: 700,
-  cursor: "pointer",
-  boxShadow: "0 12px 24px rgba(53, 122, 97, 0.20)",
-};
+  sidebarLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)",
+    color: "#ffffff",
+    fontWeight: 800,
+    fontSize: 22,
+    boxShadow: "0 12px 26px rgba(37, 99, 235, 0.20)",
+  },
 
-const boxStyle: React.CSSProperties = {
-  border: "1px solid #dcefe6",
-  borderRadius: 20,
-  padding: 16,
-  background: "#f9fcfb",
-  display: "grid",
-  gap: 12,
-};
+  sidebarTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#0f172a",
+  },
 
-const sectionTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 17,
-  color: "#1d483c",
+  sidebarSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#64748b",
+  },
+
+  nav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+
+  navItem: {
+    textDecoration: "none",
+    color: "#1e3a8a",
+    background: "#f8fbff",
+    border: "1px solid #dbeafe",
+    borderRadius: 16,
+    padding: "14px 16px",
+    fontWeight: 700,
+    fontSize: 14,
+  },
+
+  navItemActive: {
+    background: "linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)",
+    color: "#1d4ed8",
+    border: "1px solid #93c5fd",
+  },
+
+  logoutButton: {
+    height: 46,
+    border: "none",
+    borderRadius: 16,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontWeight: 700,
+    cursor: "pointer",
+    borderTop: "1px solid #dbeafe",
+  },
+
+  content: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+  },
+
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 18,
+    alignItems: "stretch",
+    flexWrap: "wrap",
+  },
+
+  badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 14px",
+    borderRadius: 999,
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    fontSize: 13,
+    fontWeight: 700,
+    marginBottom: 14,
+  },
+
+  title: {
+    margin: 0,
+    fontSize: 32,
+    lineHeight: 1.15,
+    color: "#0f172a",
+    fontWeight: 800,
+  },
+
+  subtitle: {
+    marginTop: 10,
+    marginBottom: 0,
+    maxWidth: 760,
+    fontSize: 15,
+    color: "#475569",
+    lineHeight: 1.7,
+  },
+
+  profileCard: {
+    minWidth: 270,
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    borderRadius: 22,
+    padding: 18,
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+  },
+
+  profileLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+
+  profileName: {
+    marginTop: 8,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0f172a",
+  },
+
+  profileMeta: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 1.6,
+  },
+
+  errorBox: {
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    color: "#b91c1c",
+    borderRadius: 18,
+    padding: "14px 16px",
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+
+  indicatorGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 16,
+  },
+
+  indicatorCard: {
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    borderRadius: 22,
+    padding: 20,
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+  },
+
+  indicatorCardWide: {
+    background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)",
+    border: "1px solid #bfdbfe",
+    borderRadius: 22,
+    padding: 20,
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+  },
+
+  indicatorLabel: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#64748b",
+    marginBottom: 12,
+  },
+
+  indicatorValue: {
+    fontSize: 32,
+    fontWeight: 800,
+    color: "#0f172a",
+    lineHeight: 1,
+  },
+
+  indicatorHint: {
+    marginTop: 10,
+    fontSize: 13,
+    color: "#475569",
+  },
+
+  sectionGrid: {
+    display: "grid",
+    gridTemplateColumns: "1.2fr 1fr",
+    gap: 20,
+  },
+
+  panel: {
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    borderRadius: 24,
+    padding: 22,
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
+  },
+
+  panelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 18,
+  },
+
+  panelTitle: {
+    margin: 0,
+    fontSize: 22,
+    color: "#0f172a",
+    fontWeight: 800,
+  },
+
+  panelText: {
+    marginTop: 8,
+    marginBottom: 0,
+    fontSize: 14,
+    color: "#64748b",
+    lineHeight: 1.7,
+  },
+
+  quickGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 14,
+  },
+
+  quickCard: {
+    textDecoration: "none",
+    background: "#f8fbff",
+    border: "1px solid #dbeafe",
+    borderRadius: 20,
+    padding: 18,
+    transition: "0.2s",
+  },
+
+  quickTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#1e3a8a",
+    marginBottom: 8,
+  },
+
+  quickText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 1.6,
+  },
+
+  flowList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+
+  flowItem: {
+    display: "flex",
+    gap: 14,
+    alignItems: "flex-start",
+    background: "#f8fbff",
+    border: "1px solid #dbeafe",
+    borderRadius: 18,
+    padding: 16,
+  },
+
+  flowStep: {
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+
+  flowTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+
+  flowText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 1.6,
+  },
+
+  emptyBox: {
+    background: "#f8fbff",
+    border: "1px dashed #bfdbfe",
+    borderRadius: 18,
+    padding: "24px 18px",
+    textAlign: "center",
+    color: "#64748b",
+    fontSize: 14,
+  },
+
+  tableWrapper: {
+    overflowX: "auto",
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "separate",
+    borderSpacing: "0 10px",
+  },
+
+  th: {
+    textAlign: "left",
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 800,
+    padding: "0 12px 6px 12px",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    whiteSpace: "nowrap",
+  },
+
+  tr: {
+    background: "#f8fbff",
+  },
+
+  td: {
+    padding: "16px 12px",
+    fontSize: 14,
+    color: "#334155",
+    borderTop: "1px solid #dbeafe",
+    borderBottom: "1px solid #dbeafe",
+    whiteSpace: "nowrap",
+  },
+
+  tdStrong: {
+    padding: "16px 12px",
+    fontSize: 14,
+    color: "#0f172a",
+    fontWeight: 700,
+    borderTop: "1px solid #dbeafe",
+    borderBottom: "1px solid #dbeafe",
+    minWidth: 220,
+  },
+
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 12px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  },
 };
