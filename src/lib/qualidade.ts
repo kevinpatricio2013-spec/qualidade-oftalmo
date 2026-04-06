@@ -1,134 +1,90 @@
-export type StatusOcorrencia =
-  | "Aberta"
-  | "Em análise pela Qualidade"
-  | "Direcionada para Liderança"
-  | "Em tratativa pela Liderança"
-  | "Aguardando validação da Qualidade"
-  | "Encerrada"
-  | string;
+import type { Ocorrencia } from "@/src/types/ocorrencia";
 
-export type Ocorrencia = {
-  id: string;
-  titulo?: string | null;
-  descricao?: string | null;
-  setor_origem?: string | null;
-  setor_responsavel?: string | null;
-  gravidade?: string | null;
-  tipo_ocorrencia?: string | null;
-  status?: StatusOcorrencia | null;
-  created_at?: string | null;
-  prazo?: string | null;
-};
-
-export const STATUS_FLUXO: StatusOcorrencia[] = [
-  "Aberta",
-  "Em análise pela Qualidade",
-  "Direcionada para Liderança",
-  "Em tratativa pela Liderança",
-  "Aguardando validação da Qualidade",
-  "Encerrada",
-];
-
-export const SETORES = [
-  "Agendamento",
-  "Autorização",
-  "Centro Cirúrgico",
-  "CME",
-  "Comissões Hospitalares",
-  "Compras",
-  "Consultório Médico",
-  "Contas Médicas",
-  "Controlador de Acesso",
-  "Diretoria",
-  "Facilities",
-  "Farmácia / OPME",
-  "Faturamento",
-  "Financeiro",
-  "Fornecedores Externos",
-  "Gestão da Informação",
-  "Gestão de Pessoas",
-  "Higiene",
-  "Qualidade",
-  "Recepção",
-  "Engenharia Clínica",
-  "Pronto Atendimento",
-];
-
-export function formatarData(data?: string | null) {
-  if (!data) return "-";
-  return new Date(data).toLocaleDateString("pt-BR");
+export function traduzirStatus(status?: string | null) {
+  switch (status) {
+    case "EM_ANALISE_QUALIDADE":
+      return "Em análise pela Qualidade";
+    case "DIRECIONADA":
+      return "Direcionada para Liderança";
+    case "EM_TRATATIVA":
+      return "Em tratativa pela Liderança";
+    case "AGUARDANDO_VALIDACAO":
+      return "Aguardando validação da Qualidade";
+    case "CONCLUIDA":
+      return "Encerrada";
+    default:
+      return "Não definido";
+  }
 }
 
-export function formatarDataHora(data?: string | null) {
-  if (!data) return "-";
+export function formatarData(data?: string | null) {
+  if (!data) return "Não informado";
   return new Date(data).toLocaleString("pt-BR");
 }
 
-export function diasParaVencimento(data?: string | null) {
-  if (!data) return null;
-
-  const hoje = new Date();
-  const prazo = new Date(data);
-
-  hoje.setHours(0, 0, 0, 0);
-  prazo.setHours(0, 0, 0, 0);
-
-  const diffMs = prazo.getTime() - hoje.getTime();
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+export function formatarDataCurta(data?: string | null) {
+  if (!data) return "Não informado";
+  return new Date(data).toLocaleDateString("pt-BR");
 }
 
-export function contarPorStatus(ocorrencias: Ocorrencia[]) {
-  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
-    const chave = item.status || "Sem status";
-    acc[chave] = (acc[chave] || 0) + 1;
-    return acc;
-  }, {});
+export function gravidadeClasses(gravidade?: string | null) {
+  const valor = gravidade?.toLowerCase();
+
+  if (valor?.includes("alta") || valor?.includes("grave") || valor?.includes("crítica")) {
+    return "bg-red-50 text-red-700 border border-red-200";
+  }
+
+  if (valor?.includes("média") || valor?.includes("media")) {
+    return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+
+  if (valor?.includes("baixa")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  }
+
+  return "bg-slate-100 text-slate-700 border border-slate-200";
 }
 
-export function contarPorGravidade(ocorrencias: Ocorrencia[]) {
-  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
-    const chave = item.gravidade || "Não informada";
-    acc[chave] = (acc[chave] || 0) + 1;
-    return acc;
-  }, {});
+export function statusClasses(status?: string | null) {
+  switch (status) {
+    case "EM_ANALISE_QUALIDADE":
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+    case "DIRECIONADA":
+      return "bg-sky-50 text-sky-700 border border-sky-200";
+    case "EM_TRATATIVA":
+      return "bg-violet-50 text-violet-700 border border-violet-200";
+    case "AGUARDANDO_VALIDACAO":
+      return "bg-orange-50 text-orange-700 border border-orange-200";
+    case "CONCLUIDA":
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+    default:
+      return "bg-slate-100 text-slate-700 border border-slate-200";
+  }
 }
 
-export function contarPorSetor(ocorrencias: Ocorrencia[]) {
-  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
-    const chave = item.setor_responsavel || item.setor_origem || "Não informado";
-    acc[chave] = (acc[chave] || 0) + 1;
-    return acc;
-  }, {});
+export function calcularDiasEmAberto(dataCriacao?: string | null) {
+  if (!dataCriacao) return 0;
+
+  const inicio = new Date(dataCriacao).getTime();
+  const agora = Date.now();
+
+  const diferenca = agora - inicio;
+  return Math.max(0, Math.floor(diferenca / (1000 * 60 * 60 * 24)));
 }
 
-export function obterIndicadores(ocorrencias: Ocorrencia[]) {
-  return {
-    total: ocorrencias.length,
-    abertas: ocorrencias.filter((item) => item.status === "Aberta").length,
-    emAnalise: ocorrencias.filter(
-      (item) => item.status === "Em análise pela Qualidade"
-    ).length,
-    direcionadas: ocorrencias.filter(
-      (item) => item.status === "Direcionada para Liderança"
-    ).length,
-    emTratativa: ocorrencias.filter(
-      (item) => item.status === "Em tratativa pela Liderança"
-    ).length,
-    aguardandoValidacao: ocorrencias.filter(
-      (item) => item.status === "Aguardando validação da Qualidade"
-    ).length,
-    encerradas: ocorrencias.filter((item) => item.status === "Encerrada").length,
-  };
+export function verificarSlaVencido(ocorrencia: Ocorrencia) {
+  if (!ocorrencia.data_limite) return false;
+  if (ocorrencia.status === "CONCLUIDA") return false;
+
+  return new Date(ocorrencia.data_limite).getTime() < Date.now();
 }
 
-export function statusAnterior(status: StatusOcorrencia) {
-  const index = STATUS_FLUXO.indexOf(status);
-  if (index <= 0) return status;
-  return STATUS_FLUXO[index - 1];
-}
+export function calcularDiasAtraso(ocorrencia: Ocorrencia) {
+  if (!ocorrencia.data_limite) return 0;
+  if (!verificarSlaVencido(ocorrencia)) return 0;
 
-export function statusSeguinte(status: StatusOcorrencia) {
-  const index = STATUS_FLUXO.indexOf(status);
-  if (index < 0 || index >= STATUS_FLUXO.length - 1) return status;
-  return STATUS_FLUXO[index + 1];
+  const limite = new Date(ocorrencia.data_limite).getTime();
+  const agora = Date.now();
+
+  return Math.max(0, Math.floor((agora - limite) / (1000 * 60 * 60 * 24)));
 }

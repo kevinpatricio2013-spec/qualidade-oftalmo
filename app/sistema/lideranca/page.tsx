@@ -2,7 +2,39 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardList,
+  Clock3,
+  Loader2,
+  ShieldCheck,
+  Target,
+} from "lucide-react";
 import { supabase } from "../../../src/lib/supabase";
+
+type Ocorrencia = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  tipo_ocorrencia: string | null;
+  setor_origem: string | null;
+  setor_responsavel: string | null;
+  gravidade: string | null;
+  status: string | null;
+  resposta_lideranca: string | null;
+  data_resposta_lideranca: string | null;
+  validado_qualidade: boolean | null;
+  data_validacao_qualidade: string | null;
+  observacao_qualidade: string | null;
+  encaminhado_por_qualidade: string | null;
+  prazo_dias: number | null;
+  data_limite: string | null;
+  concluido_em: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
 type Profile = {
   id: string;
@@ -12,170 +44,269 @@ type Profile = {
   setor: string | null;
 };
 
-type Ocorrencia = {
-  id: string;
-  titulo: string | null;
-  descricao: string | null;
-  setor_origem: string | null;
-  setor_responsavel: string | null;
-  gravidade: string | null;
-  tipo_ocorrencia: string | null;
-  status: string | null;
-  resposta_lideranca: string | null;
-  data_resposta_lideranca: string | null;
-  observacao_qualidade: string | null;
-  created_at: string | null;
-};
-
 type Plano5W2H = {
-  oQue: string;
-  porQue: string;
-  onde: string;
-  quando: string;
-  quem: string;
-  como: string;
-  quantoCusta: string;
+  id: string;
+  ocorrencia_id: string;
+  what: string | null;
+  why: string | null;
+  where: string | null;
+  when: string | null;
+  who: string | null;
+  how: string | null;
+  how_much: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-function formatarDataHora(data?: string | null) {
-  if (!data) return "-";
+function traduzirStatus(status?: string | null) {
+  switch (status) {
+    case "EM_ANALISE_QUALIDADE":
+      return "Em análise pela Qualidade";
+    case "DIRECIONADA":
+      return "Direcionada para Liderança";
+    case "EM_TRATATIVA":
+      return "Em tratativa pela Liderança";
+    case "AGUARDANDO_VALIDACAO":
+      return "Aguardando validação da Qualidade";
+    case "CONCLUIDA":
+      return "Encerrada";
+    default:
+      return status || "Não definido";
+  }
+}
+
+function formatarData(data?: string | null) {
+  if (!data) return "Não informado";
   return new Date(data).toLocaleString("pt-BR");
 }
 
-function getStatusClass(status?: string | null) {
+function formatarDataCurta(data?: string | null) {
+  if (!data) return "Não informado";
+  return new Date(data).toLocaleDateString("pt-BR");
+}
+
+function statusClasses(status?: string | null) {
   switch (status) {
-    case "Em análise pela Qualidade":
-      return "bg-[#fff4d9] text-[#996b00]";
-    case "Direcionada para Liderança":
-      return "bg-[#e8f4ff] text-[#0f5d99]";
-    case "Em tratativa pela Liderança":
-      return "bg-[#e7faff] text-[#0077a8]";
-    case "Aguardando validação da Qualidade":
-      return "bg-[#efe9ff] text-[#6d4bb6]";
-    case "Encerrada":
-      return "bg-[#e8f8ef] text-[#1c7c4d]";
+    case "EM_ANALISE_QUALIDADE":
+      return "bg-amber-50 text-amber-700 border border-amber-200";
+    case "DIRECIONADA":
+      return "bg-sky-50 text-sky-700 border border-sky-200";
+    case "EM_TRATATIVA":
+      return "bg-violet-50 text-violet-700 border border-violet-200";
+    case "AGUARDANDO_VALIDACAO":
+      return "bg-orange-50 text-orange-700 border border-orange-200";
+    case "CONCLUIDA":
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     default:
-      return "bg-[#eef5fb] text-[#5a7590]";
+      return "bg-slate-100 text-slate-700 border border-slate-200";
   }
 }
 
-function getGravidadeClass(gravidade?: string | null) {
-  switch ((gravidade || "").toLowerCase()) {
-    case "alta":
-    case "grave":
-      return "bg-[#ffe7e7] text-[#b42318]";
-    case "média":
-    case "media":
-      return "bg-[#fff4d9] text-[#996b00]";
-    case "baixa":
-      return "bg-[#e8f8ef] text-[#1c7c4d]";
-    default:
-      return "bg-[#eef5fb] text-[#5a7590]";
+function gravidadeClasses(gravidade?: string | null) {
+  const valor = gravidade?.toLowerCase();
+
+  if (
+    valor?.includes("alta") ||
+    valor?.includes("grave") ||
+    valor?.includes("crítica") ||
+    valor?.includes("critica")
+  ) {
+    return "bg-red-50 text-red-700 border border-red-200";
   }
+
+  if (valor?.includes("média") || valor?.includes("media")) {
+    return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+
+  if (valor?.includes("baixa")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  }
+
+  return "bg-slate-100 text-slate-700 border border-slate-200";
 }
 
-function texto5W2H(plano: Plano5W2H, tratativa: string) {
-  return [
-    "TRATATIVA DA LIDERANÇA",
-    tratativa || "-",
-    "",
-    "PLANO 5W2H",
-    `O que será feito: ${plano.oQue || "-"}`,
-    `Por que será feito: ${plano.porQue || "-"}`,
-    `Onde será feito: ${plano.onde || "-"}`,
-    `Quando será feito: ${plano.quando || "-"}`,
-    `Quem será responsável: ${plano.quem || "-"}`,
-    `Como será feito: ${plano.como || "-"}`,
-    `Quanto custa / recurso necessário: ${plano.quantoCusta || "-"}`,
-  ].join("\n");
+function calcularDiasEmAberto(dataCriacao?: string | null) {
+  if (!dataCriacao) return 0;
+
+  const inicio = new Date(dataCriacao).getTime();
+  const agora = Date.now();
+  const diferenca = agora - inicio;
+
+  return Math.max(0, Math.floor(diferenca / (1000 * 60 * 60 * 24)));
 }
 
-export default function SistemaLiderancaPage() {
+function verificarSlaVencido(ocorrencia: Ocorrencia) {
+  if (!ocorrencia.data_limite) return false;
+  if (ocorrencia.status === "CONCLUIDA") return false;
+
+  return new Date(ocorrencia.data_limite).getTime() < Date.now();
+}
+
+function calcularDiasAtraso(ocorrencia: Ocorrencia) {
+  if (!ocorrencia.data_limite) return 0;
+  if (!verificarSlaVencido(ocorrencia)) return 0;
+
+  const limite = new Date(ocorrencia.data_limite).getTime();
+  const agora = Date.now();
+
+  return Math.max(0, Math.floor((agora - limite) / (1000 * 60 * 60 * 24)));
+}
+
+export default function LiderancaPage() {
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [perfil, setPerfil] = useState<Profile | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [busca, setBusca] = useState("");
+  const [planos, setPlanos] = useState<Record<string, Plano5W2H | null>>({});
+  const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState<string | null>(null);
+
+  const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [tratativas, setTratativas] = useState<Record<string, string>>({});
-  const [planos, setPlanos] = useState<Record<string, Plano5W2H>>({});
+  const [planosForm, setPlanosForm] = useState<
+    Record<
+      string,
+      {
+        what: string;
+        why: string;
+        where: string;
+        when: string;
+        who: string;
+        how: string;
+        how_much: string;
+      }
+    >
+  >({});
 
   async function carregarDados() {
+    setLoading(true);
+    setErro(null);
+
     try {
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (!user) {
-        window.location.href = "/login";
+      if (userError || !user) {
+        setErro("Usuário não autenticado.");
+        setLoading(false);
         return;
       }
 
-      const { data: profileData } = await supabase
+      const { data: perfilData, error: perfilError } = await supabase
         .from("profiles")
-        .select("id, nome, email, role, setor")
+        .select("*")
         .eq("id", user.id)
         .single();
 
-      const perfil = (profileData as Profile) ?? null;
-      setProfile(perfil);
-
-      if (!perfil?.setor) {
-        setOcorrencias([]);
+      if (perfilError || !perfilData) {
+        setErro("Perfil não encontrado.");
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
+      setPerfil(perfilData as Profile);
+
+      const role = (perfilData.role || "").toUpperCase();
+      if (role !== "LIDERANCA" && role !== "LIDER" && role !== "LIDERANÇA") {
+        setErro("Acesso permitido somente para Liderança.");
+        setLoading(false);
+        return;
+      }
+
+      if (!perfilData.setor) {
+        setErro("O perfil da liderança está sem setor vinculado.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: ocorrenciasData, error: ocorrenciasError } = await supabase
         .from("ocorrencias")
-        .select(
-          `
-          id,
-          titulo,
-          descricao,
-          setor_origem,
-          setor_responsavel,
-          gravidade,
-          tipo_ocorrencia,
-          status,
-          resposta_lideranca,
-          data_resposta_lideranca,
-          observacao_qualidade,
-          created_at
-        `
-        )
-        .eq("setor_responsavel", perfil.setor)
+        .select("*")
+        .eq("setor_responsavel", perfilData.setor)
+        .in("status", ["DIRECIONADA", "EM_TRATATIVA", "AGUARDANDO_VALIDACAO"])
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Erro ao carregar ocorrências da liderança:", error);
-        setLoading(false);
-        return;
+      if (ocorrenciasError) {
+        throw ocorrenciasError;
       }
 
-      const lista = (data ?? []) as Ocorrencia[];
+      const lista = (ocorrenciasData as Ocorrencia[]) || [];
       setOcorrencias(lista);
 
-      const mapaTratativas: Record<string, string> = {};
-      const mapaPlanos: Record<string, Plano5W2H> = {};
+      const respostasIniciais: Record<string, string> = {};
+      const tratativasIniciais: Record<string, string> = {};
 
       lista.forEach((item) => {
-        mapaTratativas[item.id] = "";
-
-        mapaPlanos[item.id] = {
-          oQue: "",
-          porQue: "",
-          onde: item.setor_responsavel ?? perfil.setor ?? "",
-          quando: "",
-          quem: perfil.nome || perfil.email || "",
-          como: "",
-          quantoCusta: "",
-        };
+        respostasIniciais[item.id] = item.resposta_lideranca || "";
+        tratativasIniciais[item.id] = "";
       });
 
-      setTratativas(mapaTratativas);
-      setPlanos(mapaPlanos);
-    } catch (error) {
-      console.error("Erro inesperado ao carregar área da liderança:", error);
+      setRespostas(respostasIniciais);
+      setTratativas(tratativasIniciais);
+
+      if (lista.length > 0) {
+        const ids = lista.map((item) => item.id);
+
+        const { data: planosData, error: planosError } = await supabase
+          .from("plano_acao_5w2h")
+          .select("*")
+          .in("ocorrencia_id", ids);
+
+        if (planosError) {
+          throw planosError;
+        }
+
+        const mapaPlanos: Record<string, Plano5W2H | null> = {};
+        const mapaForms: Record<
+          string,
+          {
+            what: string;
+            why: string;
+            where: string;
+            when: string;
+            who: string;
+            how: string;
+            how_much: string;
+          }
+        > = {};
+
+        ids.forEach((id) => {
+          mapaPlanos[id] = null;
+          mapaForms[id] = {
+            what: "",
+            why: "",
+            where: "",
+            when: "",
+            who: "",
+            how: "",
+            how_much: "",
+          };
+        });
+
+        (planosData || []).forEach((plano) => {
+          mapaPlanos[plano.ocorrencia_id] = plano as Plano5W2H;
+          mapaForms[plano.ocorrencia_id] = {
+            what: plano.what || "",
+            why: plano.why || "",
+            where: plano.where || "",
+            when: plano.when ? String(plano.when).slice(0, 10) : "",
+            who: plano.who || "",
+            how: plano.how || "",
+            how_much: plano.how_much || "",
+          };
+        });
+
+        setPlanos(mapaPlanos);
+        setPlanosForm(mapaForms);
+      } else {
+        setPlanos({});
+        setPlanosForm({});
+      }
+    } catch (error: any) {
+      console.error(error);
+      setErro(error?.message || "Erro ao carregar painel da liderança.");
     } finally {
       setLoading(false);
     }
@@ -185,471 +316,671 @@ export default function SistemaLiderancaPage() {
     carregarDados();
   }, []);
 
-  const ocorrenciasFiltradas = useMemo(() => {
-    return ocorrencias.filter((item) => {
-      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${
-        item.tipo_ocorrencia ?? ""
-      } ${item.setor_origem ?? ""}`.toLowerCase();
-
-      return busca.trim()
-        ? texto.includes(busca.trim().toLowerCase())
-        : true;
-    });
-  }, [ocorrencias, busca]);
-
   const indicadores = useMemo(() => {
+    const total = ocorrencias.length;
+    const direcionadas = ocorrencias.filter((o) => o.status === "DIRECIONADA").length;
+    const emTratativa = ocorrencias.filter((o) => o.status === "EM_TRATATIVA").length;
+    const aguardandoValidacao = ocorrencias.filter((o) => o.status === "AGUARDANDO_VALIDACAO").length;
+    const vencidas = ocorrencias.filter((o) => verificarSlaVencido(o)).length;
+
     return {
-      total: ocorrencias.length,
-      direcionadas: ocorrencias.filter(
-        (item) => item.status === "Direcionada para Liderança"
-      ).length,
-      emTratativa: ocorrencias.filter(
-        (item) => item.status === "Em tratativa pela Liderança"
-      ).length,
-      aguardandoValidacao: ocorrencias.filter(
-        (item) => item.status === "Aguardando validação da Qualidade"
-      ).length,
-      encerradas: ocorrencias.filter((item) => item.status === "Encerrada")
-        .length,
+      total,
+      direcionadas,
+      emTratativa,
+      aguardandoValidacao,
+      vencidas,
     };
   }, [ocorrencias]);
 
-  function atualizarPlano(id: string, campo: keyof Plano5W2H, valor: string) {
-    setPlanos((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [campo]: valor,
-      },
-    }));
-  }
+  async function salvarTratativa(ocorrencia: Ocorrencia) {
+    const texto = tratativas[ocorrencia.id]?.trim();
 
-  async function handleEnviarTratativa(item: Ocorrencia) {
-    const tratativa = tratativas[item.id] ?? "";
-    const plano = planos[item.id];
-
-    if (!tratativa.trim()) {
-      alert("Descreva a tratativa realizada pela liderança.");
+    if (!texto) {
+      setErro("Descreva a tratativa antes de salvar.");
       return;
     }
 
-    setSavingId(item.id);
+    setErro(null);
+    setSucesso(null);
+    setSalvandoId(ocorrencia.id);
 
     try {
-      const respostaFinal = texto5W2H(plano, tratativa);
+      const { error: tratativaError } = await supabase
+        .from("tratativas_ocorrencia")
+        .insert({
+          ocorrencia_id: ocorrencia.id,
+          descricao: texto,
+          responsavel: perfil?.nome || perfil?.setor || "Liderança",
+          perfil: "LIDERANCA",
+        });
 
-      const { error } = await supabase
-        .from("ocorrencias")
-        .update({
-          resposta_lideranca: respostaFinal,
-          data_resposta_lideranca: new Date().toISOString(),
-        })
-        .eq("id", item.id);
+      if (tratativaError) throw tratativaError;
 
-      if (error) {
-        console.error("Erro ao enviar tratativa:", error);
-        return;
+      if (ocorrencia.status === "DIRECIONADA") {
+        const { error: statusError } = await supabase
+          .from("ocorrencias")
+          .update({
+            status: "EM_TRATATIVA",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", ocorrencia.id);
+
+        if (statusError) throw statusError;
       }
 
+      setSucesso("Tratativa registrada com sucesso.");
+      setTratativas((prev) => ({ ...prev, [ocorrencia.id]: "" }));
       await carregarDados();
-      alert("Tratativa e 5W2H enviados para validação da Qualidade.");
-    } catch (error) {
-      console.error("Erro inesperado ao enviar tratativa:", error);
+    } catch (error: any) {
+      console.error(error);
+      setErro(error?.message || "Erro ao salvar tratativa.");
     } finally {
-      setSavingId(null);
+      setSalvandoId(null);
     }
   }
 
+  async function salvarPlano5W2H(ocorrencia: Ocorrencia) {
+    const plano = planosForm[ocorrencia.id];
+
+    if (!plano) {
+      setErro("Plano 5W2H não encontrado.");
+      return;
+    }
+
+    setErro(null);
+    setSucesso(null);
+    setSalvandoId(ocorrencia.id);
+
+    try {
+      const existente = planos[ocorrencia.id];
+
+      if (existente?.id) {
+        const { error } = await supabase
+          .from("plano_acao_5w2h")
+          .update({
+            what: plano.what || null,
+            why: plano.why || null,
+            where: plano.where || null,
+            when: plano.when || null,
+            who: plano.who || null,
+            how: plano.how || null,
+            how_much: plano.how_much || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existente.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("plano_acao_5w2h")
+          .insert({
+            ocorrencia_id: ocorrencia.id,
+            what: plano.what || null,
+            why: plano.why || null,
+            where: plano.where || null,
+            when: plano.when || null,
+            who: plano.who || null,
+            how: plano.how || null,
+            how_much: plano.how_much || null,
+          });
+
+        if (error) throw error;
+      }
+
+      if (ocorrencia.status === "DIRECIONADA") {
+        const { error: statusError } = await supabase
+          .from("ocorrencias")
+          .update({
+            status: "EM_TRATATIVA",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", ocorrencia.id);
+
+        if (statusError) throw statusError;
+      }
+
+      setSucesso("Plano 5W2H salvo com sucesso.");
+      await carregarDados();
+    } catch (error: any) {
+      console.error(error);
+      setErro(error?.message || "Erro ao salvar plano 5W2H.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  async function devolverParaQualidade(ocorrencia: Ocorrencia) {
+    const resposta = respostas[ocorrencia.id]?.trim();
+
+    if (!resposta) {
+      setErro("Preencha a resposta da liderança antes de devolver para a Qualidade.");
+      return;
+    }
+
+    setErro(null);
+    setSucesso(null);
+    setSalvandoId(ocorrencia.id);
+
+    try {
+      const { error } = await supabase
+        .from("ocorrencias")
+        .update({
+          resposta_lideranca: resposta,
+          data_resposta_lideranca: new Date().toISOString(),
+          status: "AGUARDANDO_VALIDACAO",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", ocorrencia.id);
+
+      if (error) throw error;
+
+      setSucesso("Ocorrência devolvida para validação da Qualidade.");
+      await carregarDados();
+    } catch (error: any) {
+      console.error(error);
+      setErro(error?.message || "Erro ao devolver ocorrência.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-center rounded-3xl border border-slate-200 bg-white p-10 shadow-sm">
+          <Loader2 className="mr-3 h-5 w-5 animate-spin text-emerald-600" />
+          <span className="text-sm font-medium text-slate-700">Carregando painel da Liderança...</span>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
-        <div className="grid gap-8 xl:grid-cols-[1.4fr_0.95fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
-              Área da Liderança
-            </p>
-
-            <h1 className="mt-3 text-3xl font-bold text-[#10375c] sm:text-4xl">
-              Tratativa setorial com 5W2H integrado
-            </h1>
-
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5e7d9b] sm:text-base">
-              Nesta tela, a liderança visualiza apenas as ocorrências do seu
-              setor, registra a tratativa realizada, estrutura o plano 5W2H e
-              devolve a ocorrência para a Qualidade validar. O redirecionamento
-              não acontece aqui.
-            </p>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/sistema"
-                className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
-              >
-                Voltar para o sistema
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
-                Responsável logado
+    <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                Gestão da Qualidade
               </p>
-
-              <h2 className="mt-3 text-xl font-bold text-[#12385f]">
-                {profile?.nome || "Usuário da liderança"}
-              </h2>
-
-              <p className="mt-1 text-sm text-[#6482a0]">
-                {profile?.email || "Sem e-mail"}
+              <h1 className="mt-2 text-3xl font-bold text-slate-900">
+                Painel da Liderança
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Tratativa das ocorrências do seu setor, com SLA visível, registro de ações e devolução para validação da Qualidade.
               </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {profile?.role && (
-                  <span className="rounded-full bg-[#dff1ff] px-3 py-1 text-xs font-semibold text-[#0f5d99]">
-                    {(profile.role || "").toUpperCase()}
-                  </span>
-                )}
-                {profile?.setor && (
-                  <span className="rounded-full bg-[#edf6ff] px-3 py-1 text-xs font-semibold text-[#587493]">
-                    {profile.setor}
-                  </span>
-                )}
-              </div>
             </div>
 
-            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
-                Diretriz do fluxo
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Perfil atual</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {perfil?.nome || "Liderança"}
               </p>
-
-              <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
-                <p>A liderança não redireciona ocorrências.</p>
-                <p>O papel da liderança é tratar, responder e estruturar o 5W2H.</p>
-                <p>Depois disso, a ocorrência retorna para validação da Qualidade.</p>
-              </div>
+              <p className="text-xs text-slate-600">
+                {perfil?.role || "Perfil"} {perfil?.setor ? `• ${perfil.setor}` : ""}
+              </p>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Setor do líder</p>
-          <h2 className="mt-3 text-2xl font-bold text-[#12385f]">
-            {profile?.setor || "-"}
-          </h2>
-        </div>
-
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Total</p>
-          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
-            {indicadores.total}
-          </h2>
-        </div>
-
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
-          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
-            {indicadores.direcionadas}
-          </h2>
-        </div>
-
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Em tratativa</p>
-          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
-            {indicadores.emTratativa}
-          </h2>
-        </div>
-
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Aguardando / encerradas</p>
-          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
-            {indicadores.aguardandoValidacao + indicadores.encerradas}
-          </h2>
-        </div>
-      </section>
-
-      <section className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
-        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-          Buscar ocorrência do setor
-        </label>
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Pesquisar por título, descrição, setor de origem ou tipo..."
-          className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
-        />
-      </section>
-
-      {!profile?.setor ? (
-        <div className="rounded-[32px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
-            🩺
+        {erro && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {erro}
           </div>
-          <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
-            Perfil sem setor vinculado
-          </h3>
-          <p className="mt-2 text-sm text-[#6482a0]">
-            Para a liderança visualizar suas ocorrências, o perfil precisa ter o
-            setor preenchido corretamente na tabela <strong>profiles</strong>.
-          </p>
-        </div>
-      ) : ocorrenciasFiltradas.length === 0 ? (
-        <div className="rounded-[32px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
-            📋
+        )}
+
+        {sucesso && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {sucesso}
           </div>
-          <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
-            Nenhuma ocorrência para este setor
-          </h3>
-          <p className="mt-2 text-sm text-[#6482a0]">
-            Quando a Qualidade direcionar ocorrências para{" "}
-            <strong>{profile.setor}</strong>, elas aparecerão aqui.
-          </p>
-        </div>
-      ) : (
-        <section className="space-y-5">
-          {ocorrenciasFiltradas.map((item) => {
-            const planoAtual = planos[item.id] || {
-              oQue: "",
-              porQue: "",
-              onde: item.setor_responsavel ?? profile.setor ?? "",
-              quando: "",
-              quem: profile.nome || profile.email || "",
-              como: "",
-              quantoCusta: "",
-            };
+        )}
 
-            return (
-              <article
-                key={item.id}
-                className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm"
-              >
-                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-2xl font-bold text-[#12385f]">
-                        {item.titulo || "Ocorrência sem título"}
-                      </h2>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <CardIndicador
+            titulo="Total no setor"
+            valor={indicadores.total}
+            icon={<ClipboardList className="h-5 w-5" />}
+          />
+          <CardIndicador
+            titulo="Direcionadas"
+            valor={indicadores.direcionadas}
+            icon={<ShieldCheck className="h-5 w-5" />}
+          />
+          <CardIndicador
+            titulo="Em tratativa"
+            valor={indicadores.emTratativa}
+            icon={<Clock3 className="h-5 w-5" />}
+          />
+          <CardIndicador
+            titulo="SLA vencido"
+            valor={indicadores.vencidas}
+            icon={<AlertTriangle className="h-5 w-5" />}
+            destaque
+          />
+        </section>
 
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
-                          item.status
-                        )}`}
-                      >
-                        {item.status || "Sem status"}
-                      </span>
+        <section className="space-y-4">
+          {ocorrencias.length === 0 ? (
+            <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+              <p className="text-sm text-slate-500">
+                Não existem ocorrências vinculadas ao seu setor neste momento.
+              </p>
+            </div>
+          ) : (
+            ocorrencias.map((ocorrencia) => {
+              const slaVencido = verificarSlaVencido(ocorrencia);
+              const planoAtual = planosForm[ocorrencia.id] || {
+                what: "",
+                why: "",
+                where: "",
+                when: "",
+                who: "",
+                how: "",
+                how_much: "",
+              };
 
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getGravidadeClass(
-                          item.gravidade
-                        )}`}
-                      >
-                        {item.gravidade || "Gravidade não informada"}
-                      </span>
-                    </div>
+              return (
+                <div
+                  key={ocorrencia.id}
+                  className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses(ocorrencia.status)}`}>
+                            {traduzirStatus(ocorrencia.status)}
+                          </span>
 
-                    <p className="mt-4 text-sm leading-7 text-[#5f7f9d]">
-                      {item.descricao || "Sem descrição informada."}
-                    </p>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${gravidadeClasses(ocorrencia.gravidade)}`}>
+                            {ocorrencia.gravidade || "Sem gravidade"}
+                          </span>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {item.setor_origem && (
-                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
-                          Origem: {item.setor_origem}
-                        </span>
-                      )}
-                      {item.setor_responsavel && (
-                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
-                          Responsável: {item.setor_responsavel}
-                        </span>
-                      )}
-                      {item.tipo_ocorrencia && (
-                        <span className="rounded-full bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#597692]">
-                          Tipo: {item.tipo_ocorrencia}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 text-sm text-[#6785a2] xl:min-w-[230px] xl:text-right">
-                    <p>
-                      <strong className="text-[#32597d]">Abertura:</strong>{" "}
-                      {formatarDataHora(item.created_at)}
-                    </p>
-                    <p>
-                      <strong className="text-[#32597d]">Última resposta:</strong>{" "}
-                      {item.data_resposta_lideranca
-                        ? formatarDataHora(item.data_resposta_lideranca)
-                        : "-"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-6 xl:grid-cols-2">
-                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
-                      Orientação da Qualidade
-                    </p>
-
-                    <div className="mt-5 min-h-[180px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-7 text-[#5f7f9d]">
-                      {item.observacao_qualidade ||
-                        "Sem observação registrada pela Qualidade até o momento."}
-                    </div>
-
-                    <div className="mt-5">
-                      <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                        Tratativa da liderança
-                      </label>
-                      <textarea
-                        rows={8}
-                        value={tratativas[item.id] ?? ""}
-                        onChange={(e) =>
-                          setTratativas((prev) => ({
-                            ...prev,
-                            [item.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Descreva o que foi analisado, o que foi corrigido, as ações executadas e a devolutiva formal do setor."
-                        className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
-                      Plano 5W2H integrado
-                    </p>
-
-                    <div className="mt-5 grid gap-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                          O que será feito
-                        </label>
-                        <input
-                          value={planoAtual.oQue}
-                          onChange={(e) =>
-                            atualizarPlano(item.id, "oQue", e.target.value)
-                          }
-                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                          Por que será feito
-                        </label>
-                        <input
-                          value={planoAtual.porQue}
-                          onChange={(e) =>
-                            atualizarPlano(item.id, "porQue", e.target.value)
-                          }
-                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                        />
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                            Onde
-                          </label>
-                          <input
-                            value={planoAtual.onde}
-                            onChange={(e) =>
-                              atualizarPlano(item.id, "onde", e.target.value)
-                            }
-                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                          />
+                          {slaVencido && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              SLA vencido
+                            </span>
+                          )}
                         </div>
 
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                            Quando
-                          </label>
-                          <input
-                            value={planoAtual.quando}
-                            onChange={(e) =>
-                              atualizarPlano(item.id, "quando", e.target.value)
-                            }
-                            placeholder="Prazo da ação"
-                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                        <h3 className="mt-3 text-lg font-bold text-slate-900">
+                          {ocorrencia.titulo}
+                        </h3>
+
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          {ocorrencia.descricao || "Sem descrição informada."}
+                        </p>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <InfoBox label="Tipo" value={ocorrencia.tipo_ocorrencia || "Não informado"} />
+                          <InfoBox label="Setor de origem" value={ocorrencia.setor_origem || "Não informado"} />
+                          <InfoBox label="Setor responsável" value={ocorrencia.setor_responsavel || "Não informado"} />
+                          <InfoBox label="Dias em aberto" value={`${calcularDiasEmAberto(ocorrencia.created_at)} dia(s)`} />
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <InfoBox label="Data de abertura" value={formatarDataCurta(ocorrencia.created_at)} />
+                          <InfoBox
+                            label="Prazo"
+                            value={ocorrencia.prazo_dias ? `${ocorrencia.prazo_dias} dia(s)` : "Não definido"}
+                          />
+                          <InfoBox label="Data limite" value={formatarDataCurta(ocorrencia.data_limite)} />
+                          <InfoBox
+                            label="Atraso"
+                            value={slaVencido ? `${calcularDiasAtraso(ocorrencia)} dia(s)` : "Dentro do prazo"}
+                            destaque={slaVencido}
                           />
                         </div>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                            Quem
-                          </label>
-                          <input
-                            value={planoAtual.quem}
-                            onChange={(e) =>
-                              atualizarPlano(item.id, "quem", e.target.value)
-                            }
-                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                          />
-                        </div>
+                      <div className="w-full xl:max-w-sm">
+                        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-sm font-semibold text-slate-900">
+                            Fluxo atual
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-600">
+                            A liderança registra as ações realizadas e devolve a ocorrência para validação final da Qualidade.
+                          </p>
 
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                            Quanto custa / recurso
-                          </label>
-                          <input
-                            value={planoAtual.quantoCusta}
-                            onChange={(e) =>
-                              atualizarPlano(item.id, "quantoCusta", e.target.value)
-                            }
-                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
-                          />
+                          <Link
+                            href={`/ocorrencia/${ocorrencia.id}`}
+                            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                          >
+                            Ver detalhe completo
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
                         </div>
                       </div>
+                    </div>
 
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
-                          Como será feito
+                    <div className="grid gap-5 xl:grid-cols-2">
+                      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="mb-4 flex items-center gap-2">
+                          <ClipboardList className="h-5 w-5 text-emerald-600" />
+                          <h2 className="text-base font-semibold text-slate-900">Tratativa da Liderança</h2>
+                        </div>
+
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Registrar tratativa
                         </label>
                         <textarea
                           rows={5}
-                          value={planoAtual.como}
+                          value={tratativas[ocorrencia.id] || ""}
                           onChange={(e) =>
-                            atualizarPlano(item.id, "como", e.target.value)
+                            setTratativas((prev) => ({
+                              ...prev,
+                              [ocorrencia.id]: e.target.value,
+                            }))
                           }
-                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                          placeholder="Descreva as ações executadas pelo setor..."
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400"
                         />
+
+                        <button
+                          onClick={() => salvarTratativa(ocorrencia)}
+                          disabled={salvandoId === ocorrencia.id}
+                          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {salvandoId === ocorrencia.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Salvando...
+                            </>
+                          ) : (
+                            <>
+                              Salvar tratativa
+                              <CheckCircle2 className="h-4 w-4" />
+                            </>
+                          )}
+                        </button>
+
+                        {ocorrencia.resposta_lideranca && (
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Última resposta registrada
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-slate-700">
+                              {ocorrencia.resposta_lideranca}
+                            </p>
+                            <p className="mt-2 text-xs text-slate-500">
+                              {formatarData(ocorrencia.data_resposta_lideranca)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="mb-4 flex items-center gap-2">
+                          <Target className="h-5 w-5 text-emerald-600" />
+                          <h2 className="text-base font-semibold text-slate-900">Plano de ação 5W2H</h2>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <CampoPlano
+                            label="What / O que"
+                            value={planoAtual.what}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  what: value,
+                                },
+                              }))
+                            }
+                          />
+
+                          <CampoPlano
+                            label="Why / Por que"
+                            value={planoAtual.why}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  why: value,
+                                },
+                              }))
+                            }
+                          />
+
+                          <CampoPlano
+                            label="Where / Onde"
+                            value={planoAtual.where}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  where: value,
+                                },
+                              }))
+                            }
+                          />
+
+                          <CampoPlano
+                            label="When / Quando"
+                            type="date"
+                            value={planoAtual.when}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  when: value,
+                                },
+                              }))
+                            }
+                          />
+
+                          <CampoPlano
+                            label="Who / Quem"
+                            value={planoAtual.who}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  who: value,
+                                },
+                              }))
+                            }
+                          />
+
+                          <CampoPlano
+                            label="How much / Quanto custa"
+                            value={planoAtual.how_much}
+                            onChange={(value) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  how_much: value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="mt-3">
+                          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            How / Como
+                          </label>
+                          <textarea
+                            rows={4}
+                            value={planoAtual.how}
+                            onChange={(e) =>
+                              setPlanosForm((prev) => ({
+                                ...prev,
+                                [ocorrencia.id]: {
+                                  ...prev[ocorrencia.id],
+                                  how: e.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Descreva como a ação será executada..."
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                          />
+                        </div>
+
+                        <button
+                          onClick={() => salvarPlano5W2H(ocorrencia)}
+                          disabled={salvandoId === ocorrencia.id}
+                          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {salvandoId === ocorrencia.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Salvando plano...
+                            </>
+                          ) : (
+                            <>
+                              Salvar 5W2H
+                              <Target className="h-4 w-4" />
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="mt-5">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-4 flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                        <h2 className="text-base font-semibold text-slate-900">Devolver para a Qualidade</h2>
+                      </div>
+
+                      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Resposta final da liderança
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={respostas[ocorrencia.id] || ""}
+                        onChange={(e) =>
+                          setRespostas((prev) => ({
+                            ...prev,
+                            [ocorrencia.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Descreva o que foi feito pelo setor e o resultado alcançado..."
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                      />
+
                       <button
-                        onClick={() => handleEnviarTratativa(item)}
-                        disabled={savingId === item.id}
-                        className="w-full rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => devolverParaQualidade(ocorrencia)}
+                        disabled={salvandoId === ocorrencia.id}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {savingId === item.id
-                          ? "Enviando..."
-                          : "Enviar tratativa e devolver para a Qualidade"}
+                        {salvandoId === ocorrencia.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            Devolver para validação da Qualidade
+                            <ArrowRight className="h-4 w-4" />
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
                 </div>
-
-                {item.resposta_lideranca && (
-                  <div className="mt-6 rounded-[28px] border border-[#e6f2ff] bg-[#f8fbff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
-                      Última resposta enviada
-                    </p>
-                    <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-7 text-[#5f7f9d]">
-                      {item.resposta_lideranca}
-                    </pre>
-                  </div>
-                )}
-              </article>
-            );
-          })}
+              );
+            })
+          )}
         </section>
-      )}
+      </div>
+    </main>
+  );
+}
+
+function CardIndicador({
+  titulo,
+  valor,
+  icon,
+  destaque = false,
+}: {
+  titulo: string;
+  valor: number;
+  icon: React.ReactNode;
+  destaque?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border p-5 shadow-sm ${
+        destaque ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
+            destaque ? "bg-white text-red-600" : "bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {icon}
+        </div>
+
+        <span className={`text-3xl font-bold ${destaque ? "text-red-700" : "text-slate-900"}`}>
+          {valor}
+        </span>
+      </div>
+
+      <p className={`mt-4 text-sm font-semibold ${destaque ? "text-red-700" : "text-slate-900"}`}>
+        {titulo}
+      </p>
+    </div>
+  );
+}
+
+function InfoBox({
+  label,
+  value,
+  destaque = false,
+}: {
+  label: string;
+  value: string;
+  destaque?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        destaque ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <p className={`text-xs font-semibold uppercase tracking-wide ${destaque ? "text-red-600" : "text-slate-500"}`}>
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-medium ${destaque ? "text-red-700" : "text-slate-800"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function CampoPlano({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none"
+      />
     </div>
   );
 }

@@ -1,41 +1,32 @@
 export type StatusOcorrencia =
-  | "Aberta"
-  | "Em análise pela Qualidade"
-  | "Direcionada ao setor"
-  | "Em tratativa"
-  | "Aguardando validação"
-  | "Concluída";
+  | "EM_ANALISE_QUALIDADE"
+  | "DIRECIONADA"
+  | "EM_TRATATIVA"
+  | "AGUARDANDO_VALIDACAO"
+  | "CONCLUIDA";
 
-export type GravidadeOcorrencia =
-  | "Leve"
-  | "Moderada"
-  | "Alta"
-  | "Grave"
-  | "Sentinela"
-  | string;
-
-export interface Ocorrencia {
-  id: number;
+export type Ocorrencia = {
+  id: string;
   titulo: string;
   descricao: string | null;
   tipo_ocorrencia: string | null;
   setor_origem: string | null;
-  setor_destino: string | null;
-  gravidade: GravidadeOcorrencia | null;
-  status: StatusOcorrencia;
-  responsavel: string | null;
-  prazo: string | null;
-  tratativa: string | null;
-  analise_causa: string | null;
-  acao_imediata: string | null;
-  validacao_qualidade: string | null;
-  o_que: string | null;
-  por_que: string | null;
-  onde: string | null;
-  quando: string | null;
-  quem: string | null;
-  como: string | null;
-  quanto: string | null;
-  created_at: string;
+  setor_responsavel: string | null;
+  gravidade: string | null;
+  status: StatusOcorrencia | null;
+
+  resposta_lideranca: string | null;
+  data_resposta_lideranca: string | null;
+
+  validado_qualidade: boolean | null;
+  data_validacao_qualidade: string | null;
+  observacao_qualidade: string | null;
+  encaminhado_por_qualidade: string | null;
+
+  prazo_dias: number | null;
+  data_limite: string | null;
+  concluido_em: string | null;
+
+  created_at: string | null;
   updated_at: string | null;
-}
+};
