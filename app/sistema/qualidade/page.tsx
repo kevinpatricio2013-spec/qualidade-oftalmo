@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../src/lib/supabase";
+import { supabase } from "../../../src/lib/supabase";
 
 type Profile = {
   id: string;
@@ -55,11 +55,6 @@ const SETORES = [
   "Pronto Atendimento",
 ];
 
-function formatarData(data?: string | null) {
-  if (!data) return "-";
-  return new Date(data).toLocaleDateString("pt-BR");
-}
-
 function formatarDataHora(data?: string | null) {
   if (!data) return "-";
   return new Date(data).toLocaleString("pt-BR");
@@ -82,6 +77,21 @@ function getStatusClass(status?: string | null) {
   }
 }
 
+function getGravidadeClass(gravidade?: string | null) {
+  switch ((gravidade || "").toLowerCase()) {
+    case "alta":
+    case "grave":
+      return "bg-[#ffe7e7] text-[#b42318]";
+    case "média":
+    case "media":
+      return "bg-[#fff4d9] text-[#996b00]";
+    case "baixa":
+      return "bg-[#e8f8ef] text-[#1c7c4d]";
+    default:
+      return "bg-[#eef5fb] text-[#5a7590]";
+  }
+}
+
 export default function SistemaQualidadePage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -89,8 +99,9 @@ export default function SistemaQualidadePage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [busca, setBusca] = useState("");
-
-  const [direcionamentos, setDirecionamentos] = useState<Record<string, string>>({});
+  const [direcionamentos, setDirecionamentos] = useState<Record<string, string>>(
+    {}
+  );
   const [observacoes, setObservacoes] = useState<Record<string, string>>({});
 
   async function carregarDados() {
@@ -110,7 +121,7 @@ export default function SistemaQualidadePage() {
         .eq("id", user.id)
         .single();
 
-      setProfile(profileData ?? null);
+      setProfile((profileData as Profile) ?? null);
 
       const { data, error } = await supabase
         .from("ocorrencias")
@@ -137,7 +148,6 @@ export default function SistemaQualidadePage() {
 
       if (error) {
         console.error("Erro ao carregar ocorrências:", error);
-        alert(`Erro ao carregar ocorrências: ${error.message}`);
         return;
       }
 
@@ -155,8 +165,7 @@ export default function SistemaQualidadePage() {
       setDirecionamentos(mapaDirecionamentos);
       setObservacoes(mapaObservacoes);
     } catch (error) {
-      console.error("Erro inesperado:", error);
-      alert("Erro inesperado ao carregar a área da Qualidade.");
+      console.error("Erro inesperado ao carregar área da Qualidade:", error);
     } finally {
       setLoading(false);
     }
@@ -165,22 +174,6 @@ export default function SistemaQualidadePage() {
   useEffect(() => {
     carregarDados();
   }, []);
-
-  const ocorrenciasFiltradas = useMemo(() => {
-    return ocorrencias.filter((item) => {
-      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${item.setor_origem ?? ""} ${item.tipo_ocorrencia ?? ""}`
-        .toLowerCase();
-
-      const passouBusca = busca.trim()
-        ? texto.includes(busca.trim().toLowerCase())
-        : true;
-
-      const passouStatus =
-        filtroStatus === "todos" ? true : item.status === filtroStatus;
-
-      return passouBusca && passouStatus;
-    });
-  }, [ocorrencias, busca, filtroStatus]);
 
   const indicadores = useMemo(() => {
     return {
@@ -199,6 +192,48 @@ export default function SistemaQualidadePage() {
     };
   }, [ocorrencias]);
 
+  const ocorrenciasFiltradas = useMemo(() => {
+    return ocorrencias.filter((item) => {
+      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${
+        item.setor_origem ?? ""
+      } ${item.tipo_ocorrencia ?? ""}`.toLowerCase();
+
+      const passouBusca = busca.trim()
+        ? texto.includes(busca.trim().toLowerCase())
+        : true;
+
+      const passouStatus =
+        filtroStatus === "todos" ? true : item.status === filtroStatus;
+
+      return passouBusca && passouStatus;
+    });
+  }, [ocorrencias, busca, filtroStatus]);
+
+  async function handleSalvarObservacao(ocorrencia: Ocorrencia) {
+    setSavingId(ocorrencia.id);
+
+    try {
+      const { error } = await supabase
+        .from("ocorrencias")
+        .update({
+          observacao_qualidade: observacoes[ocorrencia.id] ?? null,
+        })
+        .eq("id", ocorrencia.id);
+
+      if (error) {
+        console.error("Erro ao salvar observação:", error);
+        return;
+      }
+
+      await carregarDados();
+      alert("Observação da Qualidade salva com sucesso.");
+    } catch (error) {
+      console.error("Erro inesperado ao salvar observação:", error);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function handleDirecionar(ocorrencia: Ocorrencia) {
     const setor = direcionamentos[ocorrencia.id];
 
@@ -210,28 +245,25 @@ export default function SistemaQualidadePage() {
     setSavingId(ocorrencia.id);
 
     try {
-      const payload = {
-        setor_responsavel: setor,
-        observacao_qualidade: observacoes[ocorrencia.id] ?? null,
-        encaminhado_por_qualidade: profile?.nome || profile?.email || "Qualidade",
-      };
-
       const { error } = await supabase
         .from("ocorrencias")
-        .update(payload)
+        .update({
+          setor_responsavel: setor,
+          observacao_qualidade: observacoes[ocorrencia.id] ?? null,
+          encaminhado_por_qualidade:
+            profile?.nome || profile?.email || "Qualidade",
+        })
         .eq("id", ocorrencia.id);
 
       if (error) {
         console.error("Erro ao direcionar ocorrência:", error);
-        alert(`Erro ao direcionar: ${error.message}`);
         return;
       }
 
       await carregarDados();
       alert("Ocorrência direcionada com sucesso.");
     } catch (error) {
-      console.error(error);
-      alert("Erro inesperado ao direcionar ocorrência.");
+      console.error("Erro inesperado ao direcionar ocorrência:", error);
     } finally {
       setSavingId(null);
     }
@@ -252,132 +284,136 @@ export default function SistemaQualidadePage() {
 
       if (error) {
         console.error("Erro ao validar ocorrência:", error);
-        alert(`Erro ao validar: ${error.message}`);
         return;
       }
 
       await carregarDados();
-      alert("Ocorrência validada pela Qualidade.");
+      alert("Ocorrência validada e encerrada com sucesso.");
     } catch (error) {
-      console.error(error);
-      alert("Erro inesperado ao validar ocorrência.");
+      console.error("Erro inesperado ao validar ocorrência:", error);
     } finally {
       setSavingId(null);
     }
-  }
-
-  async function handleSalvarObservacao(ocorrencia: Ocorrencia) {
-    setSavingId(ocorrencia.id);
-
-    try {
-      const { error } = await supabase
-        .from("ocorrencias")
-        .update({
-          observacao_qualidade: observacoes[ocorrencia.id] ?? null,
-        })
-        .eq("id", ocorrencia.id);
-
-      if (error) {
-        console.error("Erro ao salvar observação:", error);
-        alert(`Erro ao salvar observação: ${error.message}`);
-        return;
-      }
-
-      await carregarDados();
-      alert("Observação da Qualidade salva.");
-    } catch (error) {
-      console.error(error);
-      alert("Erro inesperado ao salvar observação.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-[#dcecff] bg-white p-6 shadow-sm">
-          <div className="h-6 w-56 animate-pulse rounded bg-[#e7f1fb]" />
-          <div className="mt-4 h-4 w-80 animate-pulse rounded bg-[#eef5fb]" />
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div
-              key={index}
-              className="rounded-3xl border border-[#deecfb] bg-white p-5"
-            >
-              <div className="h-4 w-24 animate-pulse rounded bg-[#e7f1fb]" />
-              <div className="mt-4 h-8 w-14 animate-pulse rounded bg-[#eef5fb]" />
-            </div>
-          ))}
-        </section>
-      </div>
-    );
   }
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f6fbff] to-white p-6 shadow-[0_20px_60px_rgba(25,118,210,0.10)]">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+      <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
+        <div className="grid gap-8 xl:grid-cols-[1.4fr_0.95fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7ea6ca]">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
               Área da Qualidade
             </p>
-            <h1 className="mt-2 text-2xl font-bold text-[#10375c] sm:text-3xl">
+
+            <h1 className="mt-3 text-3xl font-bold text-[#10375c] sm:text-4xl">
               Análise, direcionamento, validação e encerramento
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5d7b99]">
-              Nesta tela, a Qualidade visualiza todas as ocorrências, define o
-              setor responsável, acompanha a devolutiva da liderança e realiza a
-              validação final antes do encerramento.
+
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5e7d9b] sm:text-base">
+              Nesta tela, a Qualidade acompanha todas as ocorrências,
+              direciona o setor responsável, recebe a devolutiva da liderança,
+              realiza a validação final e encerra o fluxo operacional.
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/sistema"
+                className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+              >
+                Voltar para o sistema
+              </Link>
+
+              <Link
+                href="/ocorrencia/nova"
+                className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01]"
+              >
+                Nova ocorrência
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/sistema"
-              className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
-            >
-              Voltar para o sistema
-            </Link>
-            <Link
-              href="/ocorrencia/nova"
-              className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01]"
-            >
-              Nova ocorrência
-            </Link>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Responsável logado
+              </p>
+
+              <h2 className="mt-3 text-xl font-bold text-[#12385f]">
+                {profile?.nome || "Usuário da Qualidade"}
+              </h2>
+
+              <p className="mt-1 text-sm text-[#6482a0]">
+                {profile?.email || "Sem e-mail"}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {profile?.role && (
+                  <span className="rounded-full bg-[#dff1ff] px-3 py-1 text-xs font-semibold text-[#0f5d99]">
+                    {(profile.role || "").toUpperCase()}
+                  </span>
+                )}
+                {profile?.setor && (
+                  <span className="rounded-full bg-[#edf6ff] px-3 py-1 text-xs font-semibold text-[#587493]">
+                    {profile.setor}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Diretriz do fluxo
+              </p>
+
+              <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
+                <p>A Qualidade é a única responsável pelo direcionamento.</p>
+                <p>A liderança apenas trata e devolve para validação.</p>
+                <p>O encerramento fica na etapa final da Qualidade.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Total</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.total}</h2>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.total}
+          </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Em análise</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.emAnalise}</h2>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.emAnalise}
+          </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.direcionadas}</h2>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.direcionadas}
+          </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Aguardando validação</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.aguardandoValidacao}
           </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Encerradas</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.encerradas}</h2>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.encerradas}
+          </h2>
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+      <section className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           <div>
             <label className="mb-2 block text-sm font-semibold text-[#32597d]">
               Buscar ocorrência
@@ -400,9 +436,15 @@ export default function SistemaQualidadePage() {
               className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
             >
               <option value="todos">Todos</option>
-              <option value="Em análise pela Qualidade">Em análise pela Qualidade</option>
-              <option value="Direcionada para Liderança">Direcionada para Liderança</option>
-              <option value="Em tratativa pela Liderança">Em tratativa pela Liderança</option>
+              <option value="Em análise pela Qualidade">
+                Em análise pela Qualidade
+              </option>
+              <option value="Direcionada para Liderança">
+                Direcionada para Liderança
+              </option>
+              <option value="Em tratativa pela Liderança">
+                Em tratativa pela Liderança
+              </option>
               <option value="Aguardando validação da Qualidade">
                 Aguardando validação da Qualidade
               </option>
@@ -413,8 +455,19 @@ export default function SistemaQualidadePage() {
       </section>
 
       <section className="space-y-5">
-        {ocorrenciasFiltradas.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm"
+            >
+              <div className="h-6 w-56 animate-pulse rounded bg-[#e7f1fb]" />
+              <div className="mt-4 h-4 w-80 animate-pulse rounded bg-[#eef5fb]" />
+              <div className="mt-6 h-28 rounded-3xl bg-[#f8fbff]" />
+            </div>
+          ))
+        ) : ocorrenciasFiltradas.length === 0 ? (
+          <div className="rounded-[32px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
               ✅
             </div>
@@ -428,7 +481,8 @@ export default function SistemaQualidadePage() {
         ) : (
           ocorrenciasFiltradas.map((item) => {
             const podeDirecionar =
-              item.status === "Em análise pela Qualidade" || !item.setor_responsavel;
+              item.status === "Em análise pela Qualidade" ||
+              !item.setor_responsavel;
 
             const podeValidar =
               item.status === "Aguardando validação da Qualidade" ||
@@ -437,14 +491,15 @@ export default function SistemaQualidadePage() {
             return (
               <article
                 key={item.id}
-                className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm"
+                className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm"
               >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-xl font-bold text-[#12385f]">
+                      <h2 className="text-2xl font-bold text-[#12385f]">
                         {item.titulo || "Ocorrência sem título"}
                       </h2>
+
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
                           item.status
@@ -452,9 +507,17 @@ export default function SistemaQualidadePage() {
                       >
                         {item.status || "Sem status"}
                       </span>
+
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getGravidadeClass(
+                          item.gravidade
+                        )}`}
+                      >
+                        {item.gravidade || "Gravidade não informada"}
+                      </span>
                     </div>
 
-                    <p className="mt-3 text-sm leading-6 text-[#5f7f9d]">
+                    <p className="mt-4 text-sm leading-7 text-[#5f7f9d]">
                       {item.descricao || "Sem descrição informada."}
                     </p>
 
@@ -467,11 +530,6 @@ export default function SistemaQualidadePage() {
                       {item.setor_responsavel && (
                         <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
                           Responsável: {item.setor_responsavel}
-                        </span>
-                      )}
-                      {item.gravidade && (
-                        <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
-                          Gravidade: {item.gravidade}
                         </span>
                       )}
                       {item.tipo_ocorrencia && (
@@ -503,12 +561,12 @@ export default function SistemaQualidadePage() {
                 </div>
 
                 <div className="mt-6 grid gap-6 xl:grid-cols-2">
-                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
                       Direcionamento pela Qualidade
                     </p>
 
-                    <div className="mt-4">
+                    <div className="mt-5">
                       <label className="mb-2 block text-sm font-semibold text-[#32597d]">
                         Setor responsável
                       </label>
@@ -531,12 +589,12 @@ export default function SistemaQualidadePage() {
                       </select>
                     </div>
 
-                    <div className="mt-4">
+                    <div className="mt-5">
                       <label className="mb-2 block text-sm font-semibold text-[#32597d]">
                         Observação da Qualidade
                       </label>
                       <textarea
-                        rows={5}
+                        rows={6}
                         value={observacoes[item.id] ?? ""}
                         onChange={(e) =>
                           setObservacoes((prev) => ({
@@ -544,12 +602,12 @@ export default function SistemaQualidadePage() {
                             [item.id]: e.target.value,
                           }))
                         }
-                        placeholder="Descreva a análise da Qualidade, critérios de avaliação ou observações para validação."
+                        placeholder="Descreva a análise da Qualidade, critérios de avaliação e orientações para a liderança."
                         className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
                       />
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-3">
+                    <div className="mt-5 flex flex-wrap gap-3">
                       <button
                         onClick={() => handleSalvarObservacao(item)}
                         disabled={savingId === item.id}
@@ -562,32 +620,35 @@ export default function SistemaQualidadePage() {
                         <button
                           onClick={() => handleDirecionar(item)}
                           disabled={savingId === item.id}
-                          className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {savingId === item.id ? "Processando..." : "Direcionar ocorrência"}
+                          {savingId === item.id
+                            ? "Processando..."
+                            : "Direcionar ocorrência"}
                         </button>
                       )}
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
-                      Retorno da liderança e validação
+                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                      Retorno da liderança e validação final
                     </p>
 
-                    <div className="mt-4 space-y-4">
+                    <div className="mt-5 space-y-4">
                       <div>
                         <p className="mb-2 text-sm font-semibold text-[#32597d]">
                           Resposta da liderança
                         </p>
-                        <div className="min-h-[140px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-6 text-[#5f7f9d]">
-                          {item.resposta_lideranca || "Ainda sem resposta da liderança."}
+                        <div className="min-h-[170px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-7 text-[#5f7f9d]">
+                          {item.resposta_lideranca ||
+                            "Ainda sem resposta registrada pela liderança."}
                         </div>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-2xl border border-[#e7f1fb] bg-white p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#84a5c2]">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#84a5c2]">
                             Encaminhado por
                           </p>
                           <p className="mt-2 text-sm font-semibold text-[#16324f]">
@@ -596,7 +657,7 @@ export default function SistemaQualidadePage() {
                         </div>
 
                         <div className="rounded-2xl border border-[#e7f1fb] bg-white p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#84a5c2]">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#84a5c2]">
                             Validado
                           </p>
                           <p className="mt-2 text-sm font-semibold text-[#16324f]">
