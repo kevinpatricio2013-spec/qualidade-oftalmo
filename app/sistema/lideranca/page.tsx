@@ -1,545 +1,599 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../src/lib/supabase";
-
-type Role = "qualidade" | "lider" | "diretoria" | string;
 
 type Profile = {
   id: string;
   nome: string | null;
   email: string | null;
-  role: Role | null;
+  role: string | null;
   setor: string | null;
 };
 
 type Ocorrencia = {
-  id: number;
+  id: string;
   titulo: string | null;
   descricao: string | null;
   setor_origem: string | null;
   setor_responsavel: string | null;
   gravidade: string | null;
+  tipo_ocorrencia: string | null;
   status: string | null;
   resposta_lideranca: string | null;
   data_resposta_lideranca: string | null;
-  validado_qualidade: boolean | null;
-  data_validacao_qualidade: string | null;
   observacao_qualidade: string | null;
-  encaminhado_por_qualidade: boolean | null;
+  created_at: string | null;
 };
 
-type FormResposta = {
-  resposta_lideranca: string;
+type Plano5W2H = {
+  oQue: string;
+  porQue: string;
+  onde: string;
+  quando: string;
+  quem: string;
+  como: string;
+  quantoCusta: string;
 };
 
-export default function LiderancaPage() {
-  const router = useRouter();
+function formatarDataHora(data?: string | null) {
+  if (!data) return "-";
+  return new Date(data).toLocaleString("pt-BR");
+}
 
-  const [carregando, setCarregando] = useState(true);
-  const [salvandoId, setSalvandoId] = useState<number | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState<string | null>(null);
+function getStatusClass(status?: string | null) {
+  switch (status) {
+    case "Em análise pela Qualidade":
+      return "bg-[#fff4d9] text-[#996b00]";
+    case "Direcionada para Liderança":
+      return "bg-[#e8f4ff] text-[#0f5d99]";
+    case "Em tratativa pela Liderança":
+      return "bg-[#e7faff] text-[#0077a8]";
+    case "Aguardando validação da Qualidade":
+      return "bg-[#efe9ff] text-[#6d4bb6]";
+    case "Encerrada":
+      return "bg-[#e8f8ef] text-[#1c7c4d]";
+    default:
+      return "bg-[#eef5fb] text-[#5a7590]";
+  }
+}
 
+function texto5W2H(plano: Plano5W2H, tratativa: string) {
+  return [
+    "TRATATIVA DA LIDERANÇA",
+    tratativa || "-",
+    "",
+    "PLANO 5W2H",
+    `O que será feito: ${plano.oQue || "-"}`,
+    `Por que será feito: ${plano.porQue || "-"}`,
+    `Onde será feito: ${plano.onde || "-"}`,
+    `Quando será feito: ${plano.quando || "-"}`,
+    `Quem será responsável: ${plano.quem || "-"}`,
+    `Como será feito: ${plano.como || "-"}`,
+    `Quanto custa / recurso necessário: ${plano.quantoCusta || "-"}`,
+  ].join("\n");
+}
+
+export default function SistemaLiderancaPage() {
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [tratativas, setTratativas] = useState<Record<string, string>>({});
+  const [planos, setPlanos] = useState<Record<string, Plano5W2H>>({});
 
-  const [formularios, setFormularios] = useState<Record<number, FormResposta>>({});
-
-  useEffect(() => {
-    carregarPagina();
-  }, []);
-
-  async function carregarPagina() {
+  async function carregarDados() {
     try {
-      setCarregando(true);
-      setErro(null);
-
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
-
       if (!user) {
-        router.replace("/");
+        window.location.href = "/login";
         return;
       }
 
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData } = await supabase
         .from("profiles")
         .select("id, nome, email, role, setor")
         .eq("id", user.id)
         .single();
 
-      if (profileError) throw profileError;
-
-      const perfil = profileData as Profile;
+      const perfil = profileData as Profile | null;
       setProfile(perfil);
 
-      if (perfil.role !== "lider") {
-        router.replace("/sistema");
-        return;
-      }
-
-      if (!perfil.setor || !perfil.setor.trim()) {
-        setErro(
-          "Seu perfil de liderança está sem setor vinculado. Cadastre o setor no profile para visualizar as ocorrências."
-        );
+      if (!perfil?.setor) {
         setOcorrencias([]);
         return;
       }
 
       const { data, error } = await supabase
         .from("ocorrencias")
-        .select(`
+        .select(
+          `
           id,
           titulo,
           descricao,
           setor_origem,
           setor_responsavel,
           gravidade,
+          tipo_ocorrencia,
           status,
           resposta_lideranca,
           data_resposta_lideranca,
-          validado_qualidade,
-          data_validacao_qualidade,
           observacao_qualidade,
-          encaminhado_por_qualidade
-        `)
+          created_at
+        `
+        )
         .eq("setor_responsavel", perfil.setor)
-        .order("id", { ascending: false });
+        .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erro ao carregar ocorrências da liderança:", error);
+        alert(`Erro ao carregar ocorrências: ${error.message}`);
+        return;
+      }
 
-      const lista = (data || []) as Ocorrencia[];
+      const lista = (data ?? []) as Ocorrencia[];
       setOcorrencias(lista);
 
-      const formulariosIniciais: Record<number, FormResposta> = {};
+      const mapaTratativas: Record<string, string> = {};
+      const mapaPlanos: Record<string, Plano5W2H> = {};
+
       lista.forEach((item) => {
-        formulariosIniciais[item.id] = {
-          resposta_lideranca: item.resposta_lideranca || "",
+        mapaTratativas[item.id] = "";
+
+        mapaPlanos[item.id] = {
+          oQue: "",
+          porQue: "",
+          onde: item.setor_responsavel ?? perfil.setor ?? "",
+          quando: "",
+          quem: perfil.nome || perfil.email || "",
+          como: "",
+          quantoCusta: "",
         };
       });
-      setFormularios(formulariosIniciais);
-    } catch (error: any) {
-      console.error("Erro ao carregar painel da liderança:", error);
-      setErro(error?.message || "Não foi possível carregar o painel da liderança.");
+
+      setTratativas(mapaTratativas);
+      setPlanos(mapaPlanos);
+    } catch (error) {
+      console.error("Erro inesperado:", error);
+      alert("Erro inesperado ao carregar a área da Liderança.");
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   }
 
-  function atualizarFormulario(ocorrenciaId: number, valor: string) {
-    setFormularios((prev) => ({
+  useEffect(() => {
+    carregarDados();
+  }, []);
+
+  const ocorrenciasFiltradas = useMemo(() => {
+    return ocorrencias.filter((item) => {
+      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${item.tipo_ocorrencia ?? ""} ${item.setor_origem ?? ""}`
+        .toLowerCase();
+
+      return busca.trim()
+        ? texto.includes(busca.trim().toLowerCase())
+        : true;
+    });
+  }, [ocorrencias, busca]);
+
+  const indicadores = useMemo(() => {
+    return {
+      total: ocorrencias.length,
+      direcionadas: ocorrencias.filter(
+        (item) => item.status === "Direcionada para Liderança"
+      ).length,
+      emTratativa: ocorrencias.filter(
+        (item) => item.status === "Em tratativa pela Liderança"
+      ).length,
+      aguardandoValidacao: ocorrencias.filter(
+        (item) => item.status === "Aguardando validação da Qualidade"
+      ).length,
+      encerradas: ocorrencias.filter((item) => item.status === "Encerrada")
+        .length,
+    };
+  }, [ocorrencias]);
+
+  function atualizarPlano(
+    id: string,
+    campo: keyof Plano5W2H,
+    valor: string
+  ) {
+    setPlanos((prev) => ({
       ...prev,
-      [ocorrenciaId]: {
-        resposta_lideranca: valor,
+      [id]: {
+        ...prev[id],
+        [campo]: valor,
       },
     }));
   }
 
-  async function responderOcorrencia(ocorrenciaId: number) {
-    const resposta = formularios[ocorrenciaId]?.resposta_lideranca?.trim();
+  async function handleEnviarTratativa(item: Ocorrencia) {
+    const tratativa = tratativas[item.id] ?? "";
+    const plano = planos[item.id];
 
-    if (!resposta) {
-      setErro("Preencha a resposta da liderança antes de enviar.");
-      setSucesso(null);
+    if (!tratativa.trim()) {
+      alert("Descreva a tratativa realizada pela liderança.");
       return;
     }
 
+    setSavingId(item.id);
+
     try {
-      setSalvandoId(ocorrenciaId);
-      setErro(null);
-      setSucesso(null);
+      const respostaFinal = texto5W2H(plano, tratativa);
 
       const { error } = await supabase
         .from("ocorrencias")
         .update({
-          resposta_lideranca: resposta,
+          resposta_lideranca: respostaFinal,
           data_resposta_lideranca: new Date().toISOString(),
-          validado_qualidade: false,
-          data_validacao_qualidade: null,
-          status: "Em validação pela Qualidade",
         })
-        .eq("id", ocorrenciaId);
+        .eq("id", item.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erro ao enviar tratativa:", error);
+        alert(`Erro ao enviar tratativa: ${error.message}`);
+        return;
+      }
 
-      setSucesso(`Resposta da ocorrência #${ocorrenciaId} enviada para validação da Qualidade.`);
-      await carregarPagina();
-    } catch (error: any) {
-      console.error("Erro ao responder ocorrência:", error);
-      setErro(error?.message || "Não foi possível enviar a resposta da liderança.");
+      await carregarDados();
+      alert("Tratativa e 5W2H enviados para validação da Qualidade.");
+    } catch (error) {
+      console.error(error);
+      alert("Erro inesperado ao enviar tratativa.");
     } finally {
-      setSalvandoId(null);
+      setSavingId(null);
     }
   }
 
-  const ocorrenciasFiltradas = useMemo(() => {
-    return ocorrencias.filter((item) => {
-      const termo = busca.trim().toLowerCase();
-
-      const matchBusca =
-        !termo ||
-        String(item.id).includes(termo) ||
-        (item.titulo || "").toLowerCase().includes(termo) ||
-        (item.descricao || "").toLowerCase().includes(termo) ||
-        (item.setor_origem || "").toLowerCase().includes(termo) ||
-        (item.setor_responsavel || "").toLowerCase().includes(termo) ||
-        (item.gravidade || "").toLowerCase().includes(termo) ||
-        (item.status || "").toLowerCase().includes(termo);
-
-      const matchStatus =
-        filtroStatus === "Todos" ? true : (item.status || "") === filtroStatus;
-
-      return matchBusca && matchStatus;
-    });
-  }, [ocorrencias, busca, filtroStatus]);
-
-  const indicadores = useMemo(() => {
-    const total = ocorrencias.length;
-    const aguardandoResposta = ocorrencias.filter(
-      (o) => o.status === "Encaminhada para tratativa"
-    ).length;
-    const emValidacao = ocorrencias.filter(
-      (o) => o.status === "Em validação pela Qualidade"
-    ).length;
-    const devolvidas = ocorrencias.filter(
-      (o) => o.status === "Devolvida para ajuste"
-    ).length;
-    const concluidas = ocorrencias.filter((o) => o.status === "Concluída").length;
-
-    return {
-      total,
-      aguardandoResposta,
-      emValidacao,
-      devolvidas,
-      concluidas,
-    };
-  }, [ocorrencias]);
-
-  function badgeStatus(status?: string | null) {
-    const valor = status || "Sem status";
-
-    if (valor === "Concluída") {
-      return "bg-emerald-100 text-emerald-800 border border-emerald-200";
-    }
-
-    if (valor === "Encaminhada para tratativa") {
-      return "bg-cyan-100 text-cyan-800 border border-cyan-200";
-    }
-
-    if (valor === "Em validação pela Qualidade") {
-      return "bg-amber-100 text-amber-800 border border-amber-200";
-    }
-
-    if (valor === "Devolvida para ajuste") {
-      return "bg-red-100 text-red-800 border border-red-200";
-    }
-
-    return "bg-slate-100 text-slate-700 border border-slate-200";
-  }
-
-  function badgeGravidade(gravidade?: string | null) {
-    const valor = (gravidade || "").toLowerCase();
-
-    if (valor.includes("grave") || valor.includes("alta")) {
-      return "bg-red-100 text-red-800 border border-red-200";
-    }
-
-    if (valor.includes("moder")) {
-      return "bg-amber-100 text-amber-800 border border-amber-200";
-    }
-
-    return "bg-cyan-100 text-cyan-800 border border-cyan-200";
-  }
-
-  function podeResponder(item: Ocorrencia) {
+  if (loading) {
     return (
-      item.status === "Encaminhada para tratativa" ||
-      item.status === "Devolvida para ajuste"
-    );
-  }
-
-  if (carregando) {
-    return (
-      <main className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
-          <h1 className="text-xl font-bold text-slate-800">Carregando painel da Liderança</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Aguarde enquanto preparamos as ocorrências do seu setor.
-          </p>
-        </div>
-      </main>
+      <div className="space-y-6">
+        <section className="rounded-[28px] border border-[#dcecff] bg-white p-6 shadow-sm">
+          <div className="h-6 w-56 animate-pulse rounded bg-[#e7f1fb]" />
+          <div className="mt-4 h-4 w-80 animate-pulse rounded bg-[#eef5fb]" />
+        </section>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-emerald-700">Módulo da Liderança</p>
-              <h1 className="mt-2 text-3xl font-bold text-slate-800">
-                Tratativa das ocorrências do setor
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm text-slate-500">
-                Esta área exibe somente as ocorrências encaminhadas ao seu setor.
-                A liderança responde a tratativa e o caso retorna automaticamente
-                para a Qualidade validar.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => router.push("/sistema")}
-                className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Voltar ao sistema
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard")}
-                className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                Ir para dashboard
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Liderança logada
-              </p>
-              <p className="mt-2 text-base font-bold text-slate-800">
-                {profile?.nome || "Não informado"}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Perfil
-              </p>
-              <p className="mt-2 text-base font-bold text-slate-800">
-                {profile?.role || "Não informado"}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Setor vinculado
-              </p>
-              <p className="mt-2 text-base font-bold text-slate-800">
-                {profile?.setor || "Não informado"}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
-          <CardIndicador titulo="Total do setor" valor={indicadores.total} />
-          <CardIndicador titulo="Aguardando resposta" valor={indicadores.aguardandoResposta} />
-          <CardIndicador titulo="Em validação" valor={indicadores.emValidacao} />
-          <CardIndicador titulo="Devolvidas" valor={indicadores.devolvidas} />
-          <CardIndicador titulo="Concluídas" valor={indicadores.concluidas} />
-        </section>
-
-        {erro ? (
-          <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-red-700">
-            {erro}
-          </div>
-        ) : null}
-
-        {sucesso ? (
-          <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700">
-            {sucesso}
-          </div>
-        ) : null}
-
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Ocorrências do setor</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Responda somente as ocorrências encaminhadas ao seu setor.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full lg:w-auto">
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por título, gravidade, setor ou status"
-                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500 min-w-[260px]"
-              />
-
-              <select
-                value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value)}
-                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
-              >
-                <option value="Todos">Todos os status</option>
-                <option value="Encaminhada para tratativa">Encaminhada para tratativa</option>
-                <option value="Em validação pela Qualidade">Em validação pela Qualidade</option>
-                <option value="Devolvida para ajuste">Devolvida para ajuste</option>
-                <option value="Concluída">Concluída</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {ocorrenciasFiltradas.length === 0 ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <h3 className="text-xl font-bold text-slate-800">Nenhuma ocorrência encontrada</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Não há ocorrências vinculadas ao seu setor com os filtros aplicados.
+    <div className="space-y-6">
+      <section className="rounded-[28px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f6fbff] to-white p-6 shadow-[0_20px_60px_rgba(25,118,210,0.10)]">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7ea6ca]">
+              Área da Liderança
             </p>
-          </section>
-        ) : (
-          <section className="space-y-4">
-            {ocorrenciasFiltradas.map((item) => {
-              const form = formularios[item.id] || {
-                resposta_lideranca: item.resposta_lideranca || "",
-              };
+            <h1 className="mt-2 text-2xl font-bold text-[#10375c] sm:text-3xl">
+              Tratativa setorial com 5W2H integrado
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5d7b99]">
+              Nesta tela, a liderança visualiza apenas as ocorrências do seu setor,
+              registra a tratativa realizada e devolve a ocorrência para a
+              Qualidade validar. O redirecionamento não acontece aqui.
+            </p>
+          </div>
 
-              return (
-                <article
-                  key={item.id}
-                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-                >
-                  <div className="flex flex-col gap-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex-1 space-y-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            Ocorrência #{item.id}
-                          </span>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/sistema"
+              className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+            >
+              Voltar para o sistema
+            </Link>
+          </div>
+        </div>
+      </section>
 
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeStatus(item.status)}`}>
-                            {item.status || "Sem status"}
-                          </span>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Setor do líder</p>
+          <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
+            {profile?.setor || "-"}
+          </h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Total</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.total}</h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+            {indicadores.direcionadas}
+          </h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Em tratativa</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+            {indicadores.emTratativa}
+          </h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Aguardando validação</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+            {indicadores.aguardandoValidacao}
+          </h2>
+        </div>
+      </section>
 
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeGravidade(item.gravidade)}`}>
-                            Gravidade: {item.gravidade || "Não informada"}
-                          </span>
+      <section className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
+        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+          Buscar ocorrência do setor
+        </label>
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Pesquisar por título, descrição, setor de origem ou tipo..."
+          className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+        />
+      </section>
+
+      {!profile?.setor ? (
+        <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
+            🩺
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
+            Perfil sem setor vinculado
+          </h3>
+          <p className="mt-2 text-sm text-[#6482a0]">
+            Para a liderança visualizar suas ocorrências, o perfil precisa ter o
+            setor corretamente preenchido na tabela <strong>profiles</strong>.
+          </p>
+        </div>
+      ) : ocorrenciasFiltradas.length === 0 ? (
+        <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
+            📋
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
+            Nenhuma ocorrência para este setor
+          </h3>
+          <p className="mt-2 text-sm text-[#6482a0]">
+            Quando a Qualidade direcionar ocorrências para <strong>{profile.setor}</strong>,
+            elas aparecerão aqui.
+          </p>
+        </div>
+      ) : (
+        <section className="space-y-5">
+          {ocorrenciasFiltradas.map((item) => {
+            const planoAtual = planos[item.id] || {
+              oQue: "",
+              porQue: "",
+              onde: item.setor_responsavel ?? profile.setor ?? "",
+              quando: "",
+              quem: profile.nome || profile.email || "",
+              como: "",
+              quantoCusta: "",
+            };
+
+            return (
+              <article
+                key={item.id}
+                className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl font-bold text-[#12385f]">
+                        {item.titulo || "Ocorrência sem título"}
+                      </h2>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
+                          item.status
+                        )}`}
+                      >
+                        {item.status || "Sem status"}
+                      </span>
+                    </div>
+
+                    <p className="mt-3 text-sm leading-6 text-[#5f7f9d]">
+                      {item.descricao || "Sem descrição informada."}
+                    </p>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.setor_origem && (
+                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                          Origem: {item.setor_origem}
+                        </span>
+                      )}
+                      {item.setor_responsavel && (
+                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                          Responsável: {item.setor_responsavel}
+                        </span>
+                      )}
+                      {item.gravidade && (
+                        <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
+                          Gravidade: {item.gravidade}
+                        </span>
+                      )}
+                      {item.tipo_ocorrencia && (
+                        <span className="rounded-full bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#597692]">
+                          Tipo: {item.tipo_ocorrencia}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 text-sm text-[#6785a2] xl:min-w-[230px] xl:text-right">
+                    <p>
+                      <strong className="text-[#32597d]">Abertura:</strong>{" "}
+                      {formatarDataHora(item.created_at)}
+                    </p>
+                    <p>
+                      <strong className="text-[#32597d]">Resposta:</strong>{" "}
+                      {item.data_resposta_lideranca
+                        ? formatarDataHora(item.data_resposta_lideranca)
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                      Orientação da Qualidade
+                    </p>
+
+                    <div className="mt-4 min-h-[180px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-6 text-[#5f7f9d]">
+                      {item.observacao_qualidade || "Sem orientação registrada pela Qualidade."}
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                        Tratativa da liderança
+                      </label>
+                      <textarea
+                        rows={7}
+                        value={tratativas[item.id] ?? ""}
+                        onChange={(e) =>
+                          setTratativas((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Descreva o que foi analisado, o que foi corrigido, as ações executadas e o retorno do setor."
+                        className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                      Plano 5W2H integrado
+                    </p>
+
+                    <div className="mt-4 grid gap-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                          O que será feito
+                        </label>
+                        <input
+                          value={planoAtual.oQue}
+                          onChange={(e) => atualizarPlano(item.id, "oQue", e.target.value)}
+                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                          Por que será feito
+                        </label>
+                        <input
+                          value={planoAtual.porQue}
+                          onChange={(e) =>
+                            atualizarPlano(item.id, "porQue", e.target.value)
+                          }
+                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                        />
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                            Onde
+                          </label>
+                          <input
+                            value={planoAtual.onde}
+                            onChange={(e) =>
+                              atualizarPlano(item.id, "onde", e.target.value)
+                            }
+                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                          />
                         </div>
 
                         <div>
-                          <h3 className="text-xl font-bold text-slate-800">
-                            {item.titulo || "Ocorrência sem título"}
-                          </h3>
-                          <p className="mt-2 text-sm text-slate-500 whitespace-pre-line">
-                            {item.descricao || "Sem descrição informada."}
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                          <InfoCard titulo="Setor de origem" valor={item.setor_origem} />
-                          <InfoCard titulo="Setor responsável" valor={item.setor_responsavel} />
-                          <InfoCard titulo="Observação da Qualidade" valor={item.observacao_qualidade} />
-                          <InfoCard
-                            titulo="Data da última resposta"
-                            valor={formatarData(item.data_resposta_lideranca)}
+                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                            Quando
+                          </label>
+                          <input
+                            value={planoAtual.quando}
+                            onChange={(e) =>
+                              atualizarPlano(item.id, "quando", e.target.value)
+                            }
+                            placeholder="Prazo da ação"
+                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
                           />
                         </div>
                       </div>
-                    </div>
 
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        Resposta da liderança
-                      </label>
-                      <textarea
-                        rows={6}
-                        value={form.resposta_lideranca}
-                        onChange={(e) => atualizarFormulario(item.id, e.target.value)}
-                        disabled={!podeResponder(item)}
-                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500 resize-none disabled:bg-slate-100 disabled:text-slate-500"
-                        placeholder="Descreva a análise do setor, causa identificada, ação adotada, responsável e devolutiva para a Qualidade"
-                      />
-                    </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                            Quem
+                          </label>
+                          <input
+                            value={planoAtual.quem}
+                            onChange={(e) =>
+                              atualizarPlano(item.id, "quem", e.target.value)
+                            }
+                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                          />
+                        </div>
 
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="text-sm text-slate-500">
-                        {item.status === "Em validação pela Qualidade" ? (
-                          <span>
-                            Esta ocorrência já foi respondida e está aguardando validação da Qualidade.
-                          </span>
-                        ) : item.status === "Concluída" ? (
-                          <span>
-                            Esta ocorrência já foi concluída pela Qualidade.
-                          </span>
-                        ) : item.status === "Devolvida para ajuste" ? (
-                          <span>
-                            A Qualidade devolveu esta ocorrência para complemento da liderança.
-                          </span>
-                        ) : (
-                          <span>
-                            Após enviar a resposta, a ocorrência retornará automaticamente para validação da Qualidade.
-                          </span>
-                        )}
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                            Quanto custa / recurso
+                          </label>
+                          <input
+                            value={planoAtual.quantoCusta}
+                            onChange={(e) =>
+                              atualizarPlano(item.id, "quantoCusta", e.target.value)
+                            }
+                            className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                          />
+                        </div>
                       </div>
 
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                          Como será feito
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={planoAtual.como}
+                          onChange={(e) =>
+                            atualizarPlano(item.id, "como", e.target.value)
+                          }
+                          className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
                       <button
-                        type="button"
-                        onClick={() => responderOcorrencia(item.id)}
-                        disabled={salvandoId === item.id || !podeResponder(item)}
-                        className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        onClick={() => handleEnviarTratativa(item)}
+                        disabled={savingId === item.id}
+                        className="w-full rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {salvandoId === item.id ? "Enviando..." : "Enviar para validação da Qualidade"}
+                        {savingId === item.id
+                          ? "Enviando..."
+                          : "Enviar tratativa e devolver para a Qualidade"}
                       </button>
                     </div>
                   </div>
-                </article>
-              );
-            })}
-          </section>
-        )}
-      </div>
-    </main>
-  );
-}
+                </div>
 
-function CardIndicador({ titulo, valor }: { titulo: string; valor: number }) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{titulo}</p>
-      <h3 className="mt-2 text-3xl font-bold text-slate-800">{valor}</h3>
+                {item.resposta_lideranca && (
+                  <div className="mt-6 rounded-3xl border border-[#e6f2ff] bg-[#f8fbff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                      Última resposta enviada
+                    </p>
+                    <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-[#5f7f9d]">
+                      {item.resposta_lideranca}
+                    </pre>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      )}
     </div>
   );
-}
-
-function InfoCard({ titulo, valor }: { titulo: string; valor?: string | null }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {titulo}
-      </p>
-      <p className="mt-2 text-sm text-slate-700 whitespace-pre-line">
-        {valor && String(valor).trim() !== "" ? valor : "Não informado"}
-      </p>
-    </div>
-  );
-}
-
-function formatarData(valor?: string | null) {
-  if (!valor) return "Não informada";
-
-  const data = new Date(valor);
-
-  if (Number.isNaN(data.getTime())) return "Não informada";
-
-  return data.toLocaleString("pt-BR");
 }

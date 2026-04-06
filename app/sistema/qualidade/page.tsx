@@ -1,41 +1,36 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../src/lib/supabase";
-
-type Role = "qualidade" | "lider" | "diretoria" | string;
 
 type Profile = {
   id: string;
   nome: string | null;
   email: string | null;
-  role: Role | null;
+  role: string | null;
   setor: string | null;
 };
 
 type Ocorrencia = {
-  id: number;
+  id: string;
   titulo: string | null;
   descricao: string | null;
   setor_origem: string | null;
   setor_responsavel: string | null;
   gravidade: string | null;
+  tipo_ocorrencia: string | null;
   status: string | null;
   resposta_lideranca: string | null;
   data_resposta_lideranca: string | null;
   validado_qualidade: boolean | null;
   data_validacao_qualidade: string | null;
   observacao_qualidade: string | null;
-  encaminhado_por_qualidade: boolean | null;
+  encaminhado_por_qualidade: string | null;
+  created_at: string | null;
 };
 
-type FormDirecionamento = {
-  setor_responsavel: string;
-  observacao_qualidade: string;
-};
-
-const setoresDisponiveis = [
+const SETORES = [
   "Agendamento",
   "Autorização",
   "Centro Cirúrgico",
@@ -47,7 +42,7 @@ const setoresDisponiveis = [
   "Controlador de Acesso",
   "Diretoria",
   "Facilities",
-  "Farmácia/OPME",
+  "Farmácia / OPME",
   "Faturamento",
   "Financeiro",
   "Fornecedores Externos",
@@ -60,602 +55,575 @@ const setoresDisponiveis = [
   "Pronto Atendimento",
 ];
 
-export default function QualidadePage() {
-  const router = useRouter();
+function formatarData(data?: string | null) {
+  if (!data) return "-";
+  return new Date(data).toLocaleDateString("pt-BR");
+}
 
-  const [carregando, setCarregando] = useState(true);
-  const [salvandoId, setSalvandoId] = useState<number | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState<string | null>(null);
+function formatarDataHora(data?: string | null) {
+  if (!data) return "-";
+  return new Date(data).toLocaleString("pt-BR");
+}
 
+function getStatusClass(status?: string | null) {
+  switch (status) {
+    case "Em análise pela Qualidade":
+      return "bg-[#fff4d9] text-[#996b00]";
+    case "Direcionada para Liderança":
+      return "bg-[#e8f4ff] text-[#0f5d99]";
+    case "Em tratativa pela Liderança":
+      return "bg-[#e7faff] text-[#0077a8]";
+    case "Aguardando validação da Qualidade":
+      return "bg-[#efe9ff] text-[#6d4bb6]";
+    case "Encerrada":
+      return "bg-[#e8f8ef] text-[#1c7c4d]";
+    default:
+      return "bg-[#eef5fb] text-[#5a7590]";
+  }
+}
+
+export default function SistemaQualidadePage() {
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-
+  const [filtroStatus, setFiltroStatus] = useState("todos");
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("Todos");
-  const [filtroFila, setFiltroFila] = useState("Todas");
 
-  const [formularios, setFormularios] = useState<Record<number, FormDirecionamento>>({});
+  const [direcionamentos, setDirecionamentos] = useState<Record<string, string>>({});
+  const [observacoes, setObservacoes] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    carregarPagina();
-  }, []);
-
-  async function carregarPagina() {
+  async function carregarDados() {
     try {
-      setCarregando(true);
-      setErro(null);
-
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
-
       if (!user) {
-        router.replace("/");
+        window.location.href = "/login";
         return;
       }
 
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData } = await supabase
         .from("profiles")
         .select("id, nome, email, role, setor")
         .eq("id", user.id)
         .single();
 
-      if (profileError) throw profileError;
-
-      const perfil = profileData as Profile;
-      setProfile(perfil);
-
-      if (perfil.role !== "qualidade" && perfil.role !== "diretoria") {
-        router.replace("/sistema");
-        return;
-      }
+      setProfile(profileData ?? null);
 
       const { data, error } = await supabase
         .from("ocorrencias")
-        .select(`
+        .select(
+          `
           id,
           titulo,
           descricao,
           setor_origem,
           setor_responsavel,
           gravidade,
+          tipo_ocorrencia,
           status,
           resposta_lideranca,
           data_resposta_lideranca,
           validado_qualidade,
           data_validacao_qualidade,
           observacao_qualidade,
-          encaminhado_por_qualidade
-        `)
-        .order("id", { ascending: false });
+          encaminhado_por_qualidade,
+          created_at
+        `
+        )
+        .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erro ao carregar ocorrências:", error);
+        alert(`Erro ao carregar ocorrências: ${error.message}`);
+        return;
+      }
 
-      const lista = (data || []) as Ocorrencia[];
+      const lista = (data ?? []) as Ocorrencia[];
       setOcorrencias(lista);
 
-      const formulariosIniciais: Record<number, FormDirecionamento> = {};
+      const mapaDirecionamentos: Record<string, string> = {};
+      const mapaObservacoes: Record<string, string> = {};
+
       lista.forEach((item) => {
-        formulariosIniciais[item.id] = {
-          setor_responsavel: item.setor_responsavel || "",
-          observacao_qualidade: item.observacao_qualidade || "",
-        };
+        mapaDirecionamentos[item.id] = item.setor_responsavel ?? "";
+        mapaObservacoes[item.id] = item.observacao_qualidade ?? "";
       });
-      setFormularios(formulariosIniciais);
-    } catch (error: any) {
-      console.error("Erro ao carregar painel da qualidade:", error);
-      setErro(error?.message || "Não foi possível carregar o painel da qualidade.");
+
+      setDirecionamentos(mapaDirecionamentos);
+      setObservacoes(mapaObservacoes);
+    } catch (error) {
+      console.error("Erro inesperado:", error);
+      alert("Erro inesperado ao carregar a área da Qualidade.");
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   }
 
-  function atualizarFormulario(
-    ocorrenciaId: number,
-    campo: keyof FormDirecionamento,
-    valor: string
-  ) {
-    setFormularios((prev) => ({
-      ...prev,
-      [ocorrenciaId]: {
-        ...(prev[ocorrenciaId] || { setor_responsavel: "", observacao_qualidade: "" }),
-        [campo]: valor,
-      },
-    }));
-  }
-
-  async function encaminharParaSetor(ocorrenciaId: number) {
-    const form = formularios[ocorrenciaId];
-
-    if (!form?.setor_responsavel) {
-      setErro("Selecione o setor responsável antes de encaminhar.");
-      setSucesso(null);
-      return;
-    }
-
-    try {
-      setSalvandoId(ocorrenciaId);
-      setErro(null);
-      setSucesso(null);
-
-      const { error } = await supabase
-        .from("ocorrencias")
-        .update({
-          setor_responsavel: form.setor_responsavel,
-          observacao_qualidade: form.observacao_qualidade || null,
-          encaminhado_por_qualidade: true,
-          validado_qualidade: false,
-          data_validacao_qualidade: null,
-          status: "Encaminhada para tratativa",
-        })
-        .eq("id", ocorrenciaId);
-
-      if (error) throw error;
-
-      setSucesso(`Ocorrência #${ocorrenciaId} encaminhada com sucesso.`);
-      await carregarPagina();
-    } catch (error: any) {
-      console.error("Erro ao encaminhar ocorrência:", error);
-      setErro(error?.message || "Não foi possível encaminhar a ocorrência.");
-    } finally {
-      setSalvandoId(null);
-    }
-  }
-
-  async function devolverParaAjuste(ocorrenciaId: number) {
-    const form = formularios[ocorrenciaId];
-
-    try {
-      setSalvandoId(ocorrenciaId);
-      setErro(null);
-      setSucesso(null);
-
-      const { error } = await supabase
-        .from("ocorrencias")
-        .update({
-          observacao_qualidade: form?.observacao_qualidade || null,
-          validado_qualidade: false,
-          data_validacao_qualidade: null,
-          status: "Devolvida para ajuste",
-        })
-        .eq("id", ocorrenciaId);
-
-      if (error) throw error;
-
-      setSucesso(`Ocorrência #${ocorrenciaId} devolvida para ajuste.`);
-      await carregarPagina();
-    } catch (error: any) {
-      console.error("Erro ao devolver ocorrência:", error);
-      setErro(error?.message || "Não foi possível devolver a ocorrência.");
-    } finally {
-      setSalvandoId(null);
-    }
-  }
-
-  async function validarConclusao(ocorrenciaId: number) {
-    const form = formularios[ocorrenciaId];
-
-    try {
-      setSalvandoId(ocorrenciaId);
-      setErro(null);
-      setSucesso(null);
-
-      const { error } = await supabase
-        .from("ocorrencias")
-        .update({
-          observacao_qualidade: form?.observacao_qualidade || null,
-          validado_qualidade: true,
-          data_validacao_qualidade: new Date().toISOString(),
-          status: "Concluída",
-        })
-        .eq("id", ocorrenciaId);
-
-      if (error) throw error;
-
-      setSucesso(`Ocorrência #${ocorrenciaId} validada e concluída.`);
-      await carregarPagina();
-    } catch (error: any) {
-      console.error("Erro ao validar ocorrência:", error);
-      setErro(error?.message || "Não foi possível validar a ocorrência.");
-    } finally {
-      setSalvandoId(null);
-    }
-  }
-
-  function filaDaOcorrencia(item: Ocorrencia) {
-    const status = item.status || "";
-
-    if (!item.encaminhado_por_qualidade && !item.setor_responsavel) {
-      return "Triagem da Qualidade";
-    }
-
-    if (status === "Encaminhada para tratativa") {
-      return "Com a Liderança";
-    }
-
-    if (
-      status === "Em validação pela Qualidade" ||
-      status === "Concluída" ||
-      status === "Devolvida para ajuste"
-    ) {
-      return "Validação da Qualidade";
-    }
-
-    if (item.resposta_lideranca) {
-      return "Validação da Qualidade";
-    }
-
-    return "Triagem da Qualidade";
-  }
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
   const ocorrenciasFiltradas = useMemo(() => {
     return ocorrencias.filter((item) => {
-      const termo = busca.trim().toLowerCase();
+      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${item.setor_origem ?? ""} ${item.tipo_ocorrencia ?? ""}`
+        .toLowerCase();
 
-      const matchBusca =
-        !termo ||
-        String(item.id).includes(termo) ||
-        (item.titulo || "").toLowerCase().includes(termo) ||
-        (item.descricao || "").toLowerCase().includes(termo) ||
-        (item.setor_origem || "").toLowerCase().includes(termo) ||
-        (item.setor_responsavel || "").toLowerCase().includes(termo) ||
-        (item.gravidade || "").toLowerCase().includes(termo) ||
-        (item.status || "").toLowerCase().includes(termo);
+      const passouBusca = busca.trim()
+        ? texto.includes(busca.trim().toLowerCase())
+        : true;
 
-      const matchStatus =
-        filtroStatus === "Todos" ? true : (item.status || "") === filtroStatus;
+      const passouStatus =
+        filtroStatus === "todos" ? true : item.status === filtroStatus;
 
-      const fila = filaDaOcorrencia(item);
-      const matchFila = filtroFila === "Todas" ? true : fila === filtroFila;
-
-      return matchBusca && matchStatus && matchFila;
+      return passouBusca && passouStatus;
     });
-  }, [ocorrencias, busca, filtroStatus, filtroFila]);
+  }, [ocorrencias, busca, filtroStatus]);
 
   const indicadores = useMemo(() => {
-    const total = ocorrencias.length;
-    const triagem = ocorrencias.filter((o) => filaDaOcorrencia(o) === "Triagem da Qualidade").length;
-    const lideranca = ocorrencias.filter((o) => filaDaOcorrencia(o) === "Com a Liderança").length;
-    const validacao = ocorrencias.filter((o) => filaDaOcorrencia(o) === "Validação da Qualidade").length;
-    const concluidas = ocorrencias.filter((o) => o.status === "Concluída").length;
-
-    return { total, triagem, lideranca, validacao, concluidas };
+    return {
+      total: ocorrencias.length,
+      emAnalise: ocorrencias.filter(
+        (item) => item.status === "Em análise pela Qualidade"
+      ).length,
+      direcionadas: ocorrencias.filter(
+        (item) => item.status === "Direcionada para Liderança"
+      ).length,
+      aguardandoValidacao: ocorrencias.filter(
+        (item) => item.status === "Aguardando validação da Qualidade"
+      ).length,
+      encerradas: ocorrencias.filter((item) => item.status === "Encerrada")
+        .length,
+    };
   }, [ocorrencias]);
 
-  function badgeStatus(status?: string | null) {
-    const valor = status || "Sem status";
+  async function handleDirecionar(ocorrencia: Ocorrencia) {
+    const setor = direcionamentos[ocorrencia.id];
 
-    if (valor === "Concluída") {
-      return "bg-emerald-100 text-emerald-800 border border-emerald-200";
+    if (!setor) {
+      alert("Selecione o setor responsável antes de direcionar.");
+      return;
     }
 
-    if (valor === "Encaminhada para tratativa") {
-      return "bg-cyan-100 text-cyan-800 border border-cyan-200";
-    }
+    setSavingId(ocorrencia.id);
 
-    if (valor === "Em validação pela Qualidade") {
-      return "bg-amber-100 text-amber-800 border border-amber-200";
-    }
+    try {
+      const payload = {
+        setor_responsavel: setor,
+        observacao_qualidade: observacoes[ocorrencia.id] ?? null,
+        encaminhado_por_qualidade: profile?.nome || profile?.email || "Qualidade",
+      };
 
-    if (valor === "Devolvida para ajuste") {
-      return "bg-red-100 text-red-800 border border-red-200";
-    }
+      const { error } = await supabase
+        .from("ocorrencias")
+        .update(payload)
+        .eq("id", ocorrencia.id);
 
-    return "bg-slate-100 text-slate-700 border border-slate-200";
+      if (error) {
+        console.error("Erro ao direcionar ocorrência:", error);
+        alert(`Erro ao direcionar: ${error.message}`);
+        return;
+      }
+
+      await carregarDados();
+      alert("Ocorrência direcionada com sucesso.");
+    } catch (error) {
+      console.error(error);
+      alert("Erro inesperado ao direcionar ocorrência.");
+    } finally {
+      setSavingId(null);
+    }
   }
 
-  function badgeGravidade(gravidade?: string | null) {
-    const valor = (gravidade || "").toLowerCase();
+  async function handleValidarEncerrar(ocorrencia: Ocorrencia) {
+    setSavingId(ocorrencia.id);
 
-    if (valor.includes("grave") || valor.includes("alta")) {
-      return "bg-red-100 text-red-800 border border-red-200";
+    try {
+      const { error } = await supabase
+        .from("ocorrencias")
+        .update({
+          validado_qualidade: true,
+          data_validacao_qualidade: new Date().toISOString(),
+          observacao_qualidade: observacoes[ocorrencia.id] ?? null,
+        })
+        .eq("id", ocorrencia.id);
+
+      if (error) {
+        console.error("Erro ao validar ocorrência:", error);
+        alert(`Erro ao validar: ${error.message}`);
+        return;
+      }
+
+      await carregarDados();
+      alert("Ocorrência validada pela Qualidade.");
+    } catch (error) {
+      console.error(error);
+      alert("Erro inesperado ao validar ocorrência.");
+    } finally {
+      setSavingId(null);
     }
-
-    if (valor.includes("moder")) {
-      return "bg-amber-100 text-amber-800 border border-amber-200";
-    }
-
-    return "bg-cyan-100 text-cyan-800 border border-cyan-200";
   }
 
-  function badgeFila(fila: string) {
-    if (fila === "Triagem da Qualidade") {
-      return "bg-violet-100 text-violet-800 border border-violet-200";
-    }
+  async function handleSalvarObservacao(ocorrencia: Ocorrencia) {
+    setSavingId(ocorrencia.id);
 
-    if (fila === "Com a Liderança") {
-      return "bg-cyan-100 text-cyan-800 border border-cyan-200";
-    }
+    try {
+      const { error } = await supabase
+        .from("ocorrencias")
+        .update({
+          observacao_qualidade: observacoes[ocorrencia.id] ?? null,
+        })
+        .eq("id", ocorrencia.id);
 
-    return "bg-amber-100 text-amber-800 border border-amber-200";
+      if (error) {
+        console.error("Erro ao salvar observação:", error);
+        alert(`Erro ao salvar observação: ${error.message}`);
+        return;
+      }
+
+      await carregarDados();
+      alert("Observação da Qualidade salva.");
+    } catch (error) {
+      console.error(error);
+      alert("Erro inesperado ao salvar observação.");
+    } finally {
+      setSavingId(null);
+    }
   }
 
-  if (carregando) {
+  if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
-          <h1 className="text-xl font-bold text-slate-800">Carregando painel da Qualidade</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Aguarde enquanto preparamos as ocorrências.
-          </p>
-        </div>
-      </main>
+      <div className="space-y-6">
+        <section className="rounded-[28px] border border-[#dcecff] bg-white p-6 shadow-sm">
+          <div className="h-6 w-56 animate-pulse rounded bg-[#e7f1fb]" />
+          <div className="mt-4 h-4 w-80 animate-pulse rounded bg-[#eef5fb]" />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className="rounded-3xl border border-[#deecfb] bg-white p-5"
+            >
+              <div className="h-4 w-24 animate-pulse rounded bg-[#e7f1fb]" />
+              <div className="mt-4 h-8 w-14 animate-pulse rounded bg-[#eef5fb]" />
+            </div>
+          ))}
+        </section>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-emerald-700">Módulo da Qualidade</p>
-              <h1 className="mt-2 text-3xl font-bold text-slate-800">Triagem e validação das ocorrências</h1>
-              <p className="mt-3 max-w-3xl text-sm text-slate-500">
-                A Qualidade analisa as ocorrências, define o setor responsável pela tratativa,
-                acompanha o retorno da liderança e realiza a validação final.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => router.push("/sistema")}
-                className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Voltar ao sistema
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard")}
-                className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                Ir para dashboard
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
-          <CardIndicador titulo="Total" valor={indicadores.total} />
-          <CardIndicador titulo="Triagem Qualidade" valor={indicadores.triagem} />
-          <CardIndicador titulo="Com a Liderança" valor={indicadores.lideranca} />
-          <CardIndicador titulo="Em validação" valor={indicadores.validacao} />
-          <CardIndicador titulo="Concluídas" valor={indicadores.concluidas} />
-        </section>
-
-        {erro ? (
-          <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-red-700">
-            {erro}
-          </div>
-        ) : null}
-
-        {sucesso ? (
-          <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700">
-            {sucesso}
-          </div>
-        ) : null}
-
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Ocorrências</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Direcione, acompanhe retorno da liderança e valide a conclusão.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full lg:w-auto">
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por título, setor, gravidade ou status"
-                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500 min-w-[260px]"
-              />
-
-              <select
-                value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value)}
-                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
-              >
-                <option value="Todos">Todos os status</option>
-                <option value="Aberta">Aberta</option>
-                <option value="Em análise pela Qualidade">Em análise pela Qualidade</option>
-                <option value="Encaminhada para tratativa">Encaminhada para tratativa</option>
-                <option value="Em validação pela Qualidade">Em validação pela Qualidade</option>
-                <option value="Concluída">Concluída</option>
-                <option value="Devolvida para ajuste">Devolvida para ajuste</option>
-              </select>
-
-              <select
-                value={filtroFila}
-                onChange={(e) => setFiltroFila(e.target.value)}
-                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
-              >
-                <option value="Todas">Todas as filas</option>
-                <option value="Triagem da Qualidade">Triagem da Qualidade</option>
-                <option value="Com a Liderança">Com a Liderança</option>
-                <option value="Validação da Qualidade">Validação da Qualidade</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {ocorrenciasFiltradas.length === 0 ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <h3 className="text-xl font-bold text-slate-800">Nenhuma ocorrência encontrada</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Ajuste os filtros ou aguarde novos registros.
+    <div className="space-y-6">
+      <section className="rounded-[28px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f6fbff] to-white p-6 shadow-[0_20px_60px_rgba(25,118,210,0.10)]">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7ea6ca]">
+              Área da Qualidade
             </p>
-          </section>
+            <h1 className="mt-2 text-2xl font-bold text-[#10375c] sm:text-3xl">
+              Análise, direcionamento, validação e encerramento
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5d7b99]">
+              Nesta tela, a Qualidade visualiza todas as ocorrências, define o
+              setor responsável, acompanha a devolutiva da liderança e realiza a
+              validação final antes do encerramento.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/sistema"
+              className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+            >
+              Voltar para o sistema
+            </Link>
+            <Link
+              href="/ocorrencia/nova"
+              className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01]"
+            >
+              Nova ocorrência
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Total</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.total}</h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Em análise</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.emAnalise}</h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.direcionadas}</h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Aguardando validação</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+            {indicadores.aguardandoValidacao}
+          </h2>
+        </div>
+        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Encerradas</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.encerradas}</h2>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+              Buscar ocorrência
+            </label>
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar por título, descrição, setor ou tipo..."
+              className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+              Filtrar por status
+            </label>
+            <select
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value)}
+              className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+            >
+              <option value="todos">Todos</option>
+              <option value="Em análise pela Qualidade">Em análise pela Qualidade</option>
+              <option value="Direcionada para Liderança">Direcionada para Liderança</option>
+              <option value="Em tratativa pela Liderança">Em tratativa pela Liderança</option>
+              <option value="Aguardando validação da Qualidade">
+                Aguardando validação da Qualidade
+              </option>
+              <option value="Encerrada">Encerrada</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-5">
+        {ocorrenciasFiltradas.length === 0 ? (
+          <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
+              ✅
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
+              Nenhuma ocorrência encontrada
+            </h3>
+            <p className="mt-2 text-sm text-[#6482a0]">
+              Ajuste os filtros ou aguarde novos registros no sistema.
+            </p>
+          </div>
         ) : (
-          <section className="space-y-4">
-            {ocorrenciasFiltradas.map((item) => {
-              const fila = filaDaOcorrencia(item);
-              const form = formularios[item.id] || {
-                setor_responsavel: item.setor_responsavel || "",
-                observacao_qualidade: item.observacao_qualidade || "",
-              };
+          ocorrenciasFiltradas.map((item) => {
+            const podeDirecionar =
+              item.status === "Em análise pela Qualidade" || !item.setor_responsavel;
 
-              const temRespostaLideranca = !!item.resposta_lideranca?.trim();
+            const podeValidar =
+              item.status === "Aguardando validação da Qualidade" ||
+              (!!item.resposta_lideranca && !item.validado_qualidade);
 
-              return (
-                <article
-                  key={item.id}
-                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-                >
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex-1 space-y-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                          Ocorrência #{item.id}
-                        </span>
-
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeStatus(item.status)}`}>
-                          {item.status || "Sem status"}
-                        </span>
-
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeFila(fila)}`}>
-                          {fila}
-                        </span>
-
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeGravidade(item.gravidade)}`}>
-                          Gravidade: {item.gravidade || "Não informada"}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-xl font-bold text-slate-800">
-                          {item.titulo || "Ocorrência sem título"}
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500 whitespace-pre-line">
-                          {item.descricao || "Sem descrição informada."}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                        <InfoCard titulo="Setor de origem" valor={item.setor_origem} />
-                        <InfoCard titulo="Setor responsável" valor={item.setor_responsavel} />
-                        <InfoCard titulo="Validado pela Qualidade" valor={item.validado_qualidade ? "Sim" : "Não"} />
-                        <InfoCard
-                          titulo="Resposta da liderança"
-                          valor={item.resposta_lideranca || "Aguardando retorno do setor responsável"}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">
-                            Setor responsável
-                          </label>
-                          <select
-                            value={form.setor_responsavel}
-                            onChange={(e) =>
-                              atualizarFormulario(item.id, "setor_responsavel", e.target.value)
-                            }
-                            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
-                          >
-                            <option value="">Selecione o setor</option>
-                            {setoresDisponiveis.map((setor) => (
-                              <option key={setor} value={setor}>
-                                {setor}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <label className="block text-sm font-semibold text-slate-700 mb-2">
-                            Observação da Qualidade
-                          </label>
-                          <textarea
-                            rows={4}
-                            value={form.observacao_qualidade}
-                            onChange={(e) =>
-                              atualizarFormulario(item.id, "observacao_qualidade", e.target.value)
-                            }
-                            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-emerald-500 resize-none"
-                            placeholder="Oriente o setor responsável ou registre observações da validação"
-                          />
-                        </div>
-                      </div>
-
-                      {temRespostaLideranca ? (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                          <p className="text-sm font-semibold text-amber-800">
-                            Retorno da liderança recebido
-                          </p>
-                          <p className="mt-2 text-sm text-amber-700 whitespace-pre-line">
-                            {item.resposta_lideranca}
-                          </p>
-                        </div>
-                      ) : null}
+            return (
+              <article
+                key={item.id}
+                className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl font-bold text-[#12385f]">
+                        {item.titulo || "Ocorrência sem título"}
+                      </h2>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
+                          item.status
+                        )}`}
+                      >
+                        {item.status || "Sem status"}
+                      </span>
                     </div>
 
-                    <div className="flex flex-col gap-3 lg:min-w-[220px]">
-                      <button
-                        type="button"
-                        disabled={salvandoId === item.id}
-                        onClick={() => encaminharParaSetor(item.id)}
-                        className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        {salvandoId === item.id ? "Salvando..." : "Encaminhar para setor"}
-                      </button>
+                    <p className="mt-3 text-sm leading-6 text-[#5f7f9d]">
+                      {item.descricao || "Sem descrição informada."}
+                    </p>
 
-                      <button
-                        type="button"
-                        disabled={salvandoId === item.id || !temRespostaLideranca}
-                        onClick={() => devolverParaAjuste(item.id)}
-                        className="rounded-2xl border border-red-300 bg-white px-5 py-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        Devolver para ajuste
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={salvandoId === item.id || !temRespostaLideranca}
-                        onClick={() => validarConclusao(item.id)}
-                        className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        Validar e concluir
-                      </button>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.setor_origem && (
+                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                          Origem: {item.setor_origem}
+                        </span>
+                      )}
+                      {item.setor_responsavel && (
+                        <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                          Responsável: {item.setor_responsavel}
+                        </span>
+                      )}
+                      {item.gravidade && (
+                        <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
+                          Gravidade: {item.gravidade}
+                        </span>
+                      )}
+                      {item.tipo_ocorrencia && (
+                        <span className="rounded-full bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#597692]">
+                          Tipo: {item.tipo_ocorrencia}
+                        </span>
+                      )}
                     </div>
                   </div>
-                </article>
-              );
-            })}
-          </section>
+
+                  <div className="grid gap-2 text-sm text-[#6785a2] xl:min-w-[230px] xl:text-right">
+                    <p>
+                      <strong className="text-[#32597d]">Abertura:</strong>{" "}
+                      {formatarDataHora(item.created_at)}
+                    </p>
+                    <p>
+                      <strong className="text-[#32597d]">Resposta liderança:</strong>{" "}
+                      {item.data_resposta_lideranca
+                        ? formatarDataHora(item.data_resposta_lideranca)
+                        : "-"}
+                    </p>
+                    <p>
+                      <strong className="text-[#32597d]">Validação:</strong>{" "}
+                      {item.data_validacao_qualidade
+                        ? formatarDataHora(item.data_validacao_qualidade)
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                      Direcionamento pela Qualidade
+                    </p>
+
+                    <div className="mt-4">
+                      <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                        Setor responsável
+                      </label>
+                      <select
+                        value={direcionamentos[item.id] ?? ""}
+                        onChange={(e) =>
+                          setDirecionamentos((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                      >
+                        <option value="">Selecione o setor</option>
+                        {SETORES.map((setor) => (
+                          <option key={setor} value={setor}>
+                            {setor}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                        Observação da Qualidade
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={observacoes[item.id] ?? ""}
+                        onChange={(e) =>
+                          setObservacoes((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Descreva a análise da Qualidade, critérios de avaliação ou observações para validação."
+                        className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        onClick={() => handleSalvarObservacao(item)}
+                        disabled={savingId === item.id}
+                        className="rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm font-semibold text-[#2d5f8b] transition hover:bg-[#f4faff] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingId === item.id ? "Salvando..." : "Salvar observação"}
+                      </button>
+
+                      {podeDirecionar && (
+                        <button
+                          onClick={() => handleDirecionar(item)}
+                          disabled={savingId === item.id}
+                          className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingId === item.id ? "Processando..." : "Direcionar ocorrência"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                      Retorno da liderança e validação
+                    </p>
+
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="mb-2 text-sm font-semibold text-[#32597d]">
+                          Resposta da liderança
+                        </p>
+                        <div className="min-h-[140px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-6 text-[#5f7f9d]">
+                          {item.resposta_lideranca || "Ainda sem resposta da liderança."}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-[#e7f1fb] bg-white p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#84a5c2]">
+                            Encaminhado por
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[#16324f]">
+                            {item.encaminhado_por_qualidade || "-"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e7f1fb] bg-white p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#84a5c2]">
+                            Validado
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[#16324f]">
+                            {item.validado_qualidade ? "Sim" : "Não"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {podeValidar && (
+                        <button
+                          onClick={() => handleValidarEncerrar(item)}
+                          disabled={savingId === item.id}
+                          className="w-full rounded-2xl bg-[#10375c] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingId === item.id
+                            ? "Validando..."
+                            : "Validar e encerrar pela Qualidade"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })
         )}
-      </div>
-    </main>
-  );
-}
-
-function CardIndicador({ titulo, valor }: { titulo: string; valor: number }) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{titulo}</p>
-      <h3 className="mt-2 text-3xl font-bold text-slate-800">{valor}</h3>
-    </div>
-  );
-}
-
-function InfoCard({ titulo, valor }: { titulo: string; valor?: string | null }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {titulo}
-      </p>
-      <p className="mt-2 text-sm text-slate-700 whitespace-pre-line">
-        {valor && String(valor).trim() !== "" ? valor : "Não informado"}
-      </p>
+      </section>
     </div>
   );
 }
