@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Siren,
 } from "lucide-react";
-import { supabase } from "@/src/lib/supabase";
+import { supabase } from "../src/lib/supabase";
 import type { Ocorrencia } from "@/src/types/ocorrencia";
 import {
   calcularDiasAtraso,
