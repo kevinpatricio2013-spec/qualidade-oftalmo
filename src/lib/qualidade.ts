@@ -1,12 +1,32 @@
-import type { Ocorrencia, StatusOcorrencia } from "@/src/types/ocorrencia";
+export type StatusOcorrencia =
+  | "Aberta"
+  | "Em análise pela Qualidade"
+  | "Direcionada para Liderança"
+  | "Em tratativa pela Liderança"
+  | "Aguardando validação da Qualidade"
+  | "Encerrada"
+  | string;
+
+export type Ocorrencia = {
+  id: string;
+  titulo?: string | null;
+  descricao?: string | null;
+  setor_origem?: string | null;
+  setor_responsavel?: string | null;
+  gravidade?: string | null;
+  tipo_ocorrencia?: string | null;
+  status?: StatusOcorrencia | null;
+  created_at?: string | null;
+  prazo?: string | null;
+};
 
 export const STATUS_FLUXO: StatusOcorrencia[] = [
   "Aberta",
   "Em análise pela Qualidade",
-  "Direcionada ao setor",
-  "Em tratativa",
-  "Aguardando validação",
-  "Concluída",
+  "Direcionada para Liderança",
+  "Em tratativa pela Liderança",
+  "Aguardando validação da Qualidade",
+  "Encerrada",
 ];
 
 export const SETORES = [
@@ -35,94 +55,80 @@ export const SETORES = [
 ];
 
 export function formatarData(data?: string | null) {
-  if (!data) return "—";
+  if (!data) return "-";
   return new Date(data).toLocaleDateString("pt-BR");
 }
 
 export function formatarDataHora(data?: string | null) {
-  if (!data) return "—";
+  if (!data) return "-";
   return new Date(data).toLocaleString("pt-BR");
 }
 
-export function diasParaVencimento(prazo?: string | null) {
-  if (!prazo) return null;
+export function diasParaVencimento(data?: string | null) {
+  if (!data) return null;
 
   const hoje = new Date();
+  const prazo = new Date(data);
+
   hoje.setHours(0, 0, 0, 0);
+  prazo.setHours(0, 0, 0, 0);
 
-  const dataPrazo = new Date(prazo);
-  dataPrazo.setHours(0, 0, 0, 0);
-
-  const diff = dataPrazo.getTime() - hoje.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
-
-export function statusSeguinte(status: StatusOcorrencia): StatusOcorrencia | null {
-  const indice = STATUS_FLUXO.indexOf(status);
-  if (indice === -1 || indice === STATUS_FLUXO.length - 1) return null;
-  return STATUS_FLUXO[indice + 1];
-}
-
-export function statusAnterior(status: StatusOcorrencia): StatusOcorrencia | null {
-  const indice = STATUS_FLUXO.indexOf(status);
-  if (indice <= 0) return null;
-  return STATUS_FLUXO[indice - 1];
+  const diffMs = prazo.getTime() - hoje.getTime();
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
 export function contarPorStatus(ocorrencias: Ocorrencia[]) {
-  return STATUS_FLUXO.map((status) => ({
-    status,
-    total: ocorrencias.filter((item) => item.status === status).length,
-  }));
+  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
+    const chave = item.status || "Sem status";
+    acc[chave] = (acc[chave] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 export function contarPorGravidade(ocorrencias: Ocorrencia[]) {
-  const mapa = new Map<string, number>();
-
-  ocorrencias.forEach((item) => {
-    const chave = item.gravidade || "Não classificada";
-    mapa.set(chave, (mapa.get(chave) || 0) + 1);
-  });
-
-  return Array.from(mapa.entries()).map(([gravidade, total]) => ({
-    gravidade,
-    total,
-  }));
+  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
+    const chave = item.gravidade || "Não informada";
+    acc[chave] = (acc[chave] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 export function contarPorSetor(ocorrencias: Ocorrencia[]) {
-  const mapa = new Map<string, number>();
-
-  ocorrencias.forEach((item) => {
-    const chave = item.setor_destino || "Não direcionado";
-    mapa.set(chave, (mapa.get(chave) || 0) + 1);
-  });
-
-  return Array.from(mapa.entries())
-    .map(([setor, total]) => ({ setor, total }))
-    .sort((a, b) => b.total - a.total);
+  return ocorrencias.reduce<Record<string, number>>((acc, item) => {
+    const chave = item.setor_responsavel || item.setor_origem || "Não informado";
+    acc[chave] = (acc[chave] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 export function obterIndicadores(ocorrencias: Ocorrencia[]) {
-  const total = ocorrencias.length;
-  const abertas = ocorrencias.filter((i) => i.status === "Aberta").length;
-  const emTratativa = ocorrencias.filter((i) => i.status === "Em tratativa").length;
-  const aguardandoValidacao = ocorrencias.filter(
-    (i) => i.status === "Aguardando validação"
-  ).length;
-  const concluidas = ocorrencias.filter((i) => i.status === "Concluída").length;
-
-  const vencidas = ocorrencias.filter((i) => {
-    const dias = diasParaVencimento(i.prazo);
-    return dias !== null && dias < 0 && i.status !== "Concluída";
-  }).length;
-
   return {
-    total,
-    abertas,
-    emTratativa,
-    aguardandoValidacao,
-    concluidas,
-    vencidas,
+    total: ocorrencias.length,
+    abertas: ocorrencias.filter((item) => item.status === "Aberta").length,
+    emAnalise: ocorrencias.filter(
+      (item) => item.status === "Em análise pela Qualidade"
+    ).length,
+    direcionadas: ocorrencias.filter(
+      (item) => item.status === "Direcionada para Liderança"
+    ).length,
+    emTratativa: ocorrencias.filter(
+      (item) => item.status === "Em tratativa pela Liderança"
+    ).length,
+    aguardandoValidacao: ocorrencias.filter(
+      (item) => item.status === "Aguardando validação da Qualidade"
+    ).length,
+    encerradas: ocorrencias.filter((item) => item.status === "Encerrada").length,
   };
+}
+
+export function statusAnterior(status: StatusOcorrencia) {
+  const index = STATUS_FLUXO.indexOf(status);
+  if (index <= 0) return status;
+  return STATUS_FLUXO[index - 1];
+}
+
+export function statusSeguinte(status: StatusOcorrencia) {
+  const index = STATUS_FLUXO.indexOf(status);
+  if (index < 0 || index >= STATUS_FLUXO.length - 1) return status;
+  return STATUS_FLUXO[index + 1];
 }
