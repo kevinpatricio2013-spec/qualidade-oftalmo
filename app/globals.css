@@ -1,8 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Ajustes globais opcionais */
+/* Ajustes globais */
 body {
   margin: 0;
   padding: 0;
