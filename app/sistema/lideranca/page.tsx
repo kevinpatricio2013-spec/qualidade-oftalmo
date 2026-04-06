@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../src/lib/supabase";
+import { supabase } from "../../../src/lib/supabase";
 
 type Profile = {
   id: string;
@@ -59,6 +59,21 @@ function getStatusClass(status?: string | null) {
   }
 }
 
+function getGravidadeClass(gravidade?: string | null) {
+  switch ((gravidade || "").toLowerCase()) {
+    case "alta":
+    case "grave":
+      return "bg-[#ffe7e7] text-[#b42318]";
+    case "média":
+    case "media":
+      return "bg-[#fff4d9] text-[#996b00]";
+    case "baixa":
+      return "bg-[#e8f8ef] text-[#1c7c4d]";
+    default:
+      return "bg-[#eef5fb] text-[#5a7590]";
+  }
+}
+
 function texto5W2H(plano: Plano5W2H, tratativa: string) {
   return [
     "TRATATIVA DA LIDERANÇA",
@@ -101,11 +116,12 @@ export default function SistemaLiderancaPage() {
         .eq("id", user.id)
         .single();
 
-      const perfil = profileData as Profile | null;
+      const perfil = (profileData as Profile) ?? null;
       setProfile(perfil);
 
       if (!perfil?.setor) {
         setOcorrencias([]);
+        setLoading(false);
         return;
       }
 
@@ -132,7 +148,7 @@ export default function SistemaLiderancaPage() {
 
       if (error) {
         console.error("Erro ao carregar ocorrências da liderança:", error);
-        alert(`Erro ao carregar ocorrências: ${error.message}`);
+        setLoading(false);
         return;
       }
 
@@ -159,8 +175,7 @@ export default function SistemaLiderancaPage() {
       setTratativas(mapaTratativas);
       setPlanos(mapaPlanos);
     } catch (error) {
-      console.error("Erro inesperado:", error);
-      alert("Erro inesperado ao carregar a área da Liderança.");
+      console.error("Erro inesperado ao carregar área da liderança:", error);
     } finally {
       setLoading(false);
     }
@@ -172,8 +187,9 @@ export default function SistemaLiderancaPage() {
 
   const ocorrenciasFiltradas = useMemo(() => {
     return ocorrencias.filter((item) => {
-      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${item.tipo_ocorrencia ?? ""} ${item.setor_origem ?? ""}`
-        .toLowerCase();
+      const texto = `${item.titulo ?? ""} ${item.descricao ?? ""} ${
+        item.tipo_ocorrencia ?? ""
+      } ${item.setor_origem ?? ""}`.toLowerCase();
 
       return busca.trim()
         ? texto.includes(busca.trim().toLowerCase())
@@ -198,11 +214,7 @@ export default function SistemaLiderancaPage() {
     };
   }, [ocorrencias]);
 
-  function atualizarPlano(
-    id: string,
-    campo: keyof Plano5W2H,
-    valor: string
-  ) {
+  function atualizarPlano(id: string, campo: keyof Plano5W2H, valor: string) {
     setPlanos((prev) => ({
       ...prev,
       [id]: {
@@ -236,92 +248,129 @@ export default function SistemaLiderancaPage() {
 
       if (error) {
         console.error("Erro ao enviar tratativa:", error);
-        alert(`Erro ao enviar tratativa: ${error.message}`);
         return;
       }
 
       await carregarDados();
       alert("Tratativa e 5W2H enviados para validação da Qualidade.");
     } catch (error) {
-      console.error(error);
-      alert("Erro inesperado ao enviar tratativa.");
+      console.error("Erro inesperado ao enviar tratativa:", error);
     } finally {
       setSavingId(null);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-[#dcecff] bg-white p-6 shadow-sm">
-          <div className="h-6 w-56 animate-pulse rounded bg-[#e7f1fb]" />
-          <div className="mt-4 h-4 w-80 animate-pulse rounded bg-[#eef5fb]" />
-        </section>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f6fbff] to-white p-6 shadow-[0_20px_60px_rgba(25,118,210,0.10)]">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+      <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
+        <div className="grid gap-8 xl:grid-cols-[1.4fr_0.95fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7ea6ca]">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
               Área da Liderança
             </p>
-            <h1 className="mt-2 text-2xl font-bold text-[#10375c] sm:text-3xl">
+
+            <h1 className="mt-3 text-3xl font-bold text-[#10375c] sm:text-4xl">
               Tratativa setorial com 5W2H integrado
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5d7b99]">
-              Nesta tela, a liderança visualiza apenas as ocorrências do seu setor,
-              registra a tratativa realizada e devolve a ocorrência para a
-              Qualidade validar. O redirecionamento não acontece aqui.
+
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5e7d9b] sm:text-base">
+              Nesta tela, a liderança visualiza apenas as ocorrências do seu
+              setor, registra a tratativa realizada, estrutura o plano 5W2H e
+              devolve a ocorrência para a Qualidade validar. O redirecionamento
+              não acontece aqui.
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/sistema"
+                className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+              >
+                Voltar para o sistema
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/sistema"
-              className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
-            >
-              Voltar para o sistema
-            </Link>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Responsável logado
+              </p>
+
+              <h2 className="mt-3 text-xl font-bold text-[#12385f]">
+                {profile?.nome || "Usuário da liderança"}
+              </h2>
+
+              <p className="mt-1 text-sm text-[#6482a0]">
+                {profile?.email || "Sem e-mail"}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {profile?.role && (
+                  <span className="rounded-full bg-[#dff1ff] px-3 py-1 text-xs font-semibold text-[#0f5d99]">
+                    {(profile.role || "").toUpperCase()}
+                  </span>
+                )}
+                {profile?.setor && (
+                  <span className="rounded-full bg-[#edf6ff] px-3 py-1 text-xs font-semibold text-[#587493]">
+                    {profile.setor}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Diretriz do fluxo
+              </p>
+
+              <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
+                <p>A liderança não redireciona ocorrências.</p>
+                <p>O papel da liderança é tratar, responder e estruturar o 5W2H.</p>
+                <p>Depois disso, a ocorrência retorna para validação da Qualidade.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Setor do líder</p>
-          <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-2xl font-bold text-[#12385f]">
             {profile?.setor || "-"}
           </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Total</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">{indicadores.total}</h2>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.total}
+          </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.direcionadas}
           </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Em tratativa</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.emTratativa}
           </h2>
         </div>
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Aguardando validação</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
-            {indicadores.aguardandoValidacao}
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Aguardando / encerradas</p>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.aguardandoValidacao + indicadores.encerradas}
           </h2>
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
+      <section className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
         <label className="mb-2 block text-sm font-semibold text-[#32597d]">
           Buscar ocorrência do setor
         </label>
@@ -334,7 +383,7 @@ export default function SistemaLiderancaPage() {
       </section>
 
       {!profile?.setor ? (
-        <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+        <div className="rounded-[32px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
             🩺
           </div>
@@ -343,11 +392,11 @@ export default function SistemaLiderancaPage() {
           </h3>
           <p className="mt-2 text-sm text-[#6482a0]">
             Para a liderança visualizar suas ocorrências, o perfil precisa ter o
-            setor corretamente preenchido na tabela <strong>profiles</strong>.
+            setor preenchido corretamente na tabela <strong>profiles</strong>.
           </p>
         </div>
       ) : ocorrenciasFiltradas.length === 0 ? (
-        <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
+        <div className="rounded-[32px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
             📋
           </div>
@@ -355,8 +404,8 @@ export default function SistemaLiderancaPage() {
             Nenhuma ocorrência para este setor
           </h3>
           <p className="mt-2 text-sm text-[#6482a0]">
-            Quando a Qualidade direcionar ocorrências para <strong>{profile.setor}</strong>,
-            elas aparecerão aqui.
+            Quando a Qualidade direcionar ocorrências para{" "}
+            <strong>{profile.setor}</strong>, elas aparecerão aqui.
           </p>
         </div>
       ) : (
@@ -375,14 +424,15 @@ export default function SistemaLiderancaPage() {
             return (
               <article
                 key={item.id}
-                className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm"
+                className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm"
               >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-xl font-bold text-[#12385f]">
+                      <h2 className="text-2xl font-bold text-[#12385f]">
                         {item.titulo || "Ocorrência sem título"}
                       </h2>
+
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
                           item.status
@@ -390,9 +440,17 @@ export default function SistemaLiderancaPage() {
                       >
                         {item.status || "Sem status"}
                       </span>
+
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getGravidadeClass(
+                          item.gravidade
+                        )}`}
+                      >
+                        {item.gravidade || "Gravidade não informada"}
+                      </span>
                     </div>
 
-                    <p className="mt-3 text-sm leading-6 text-[#5f7f9d]">
+                    <p className="mt-4 text-sm leading-7 text-[#5f7f9d]">
                       {item.descricao || "Sem descrição informada."}
                     </p>
 
@@ -405,11 +463,6 @@ export default function SistemaLiderancaPage() {
                       {item.setor_responsavel && (
                         <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
                           Responsável: {item.setor_responsavel}
-                        </span>
-                      )}
-                      {item.gravidade && (
-                        <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
-                          Gravidade: {item.gravidade}
                         </span>
                       )}
                       {item.tipo_ocorrencia && (
@@ -426,7 +479,7 @@ export default function SistemaLiderancaPage() {
                       {formatarDataHora(item.created_at)}
                     </p>
                     <p>
-                      <strong className="text-[#32597d]">Resposta:</strong>{" "}
+                      <strong className="text-[#32597d]">Última resposta:</strong>{" "}
                       {item.data_resposta_lideranca
                         ? formatarDataHora(item.data_resposta_lideranca)
                         : "-"}
@@ -435,21 +488,22 @@ export default function SistemaLiderancaPage() {
                 </div>
 
                 <div className="mt-6 grid gap-6 xl:grid-cols-2">
-                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
                       Orientação da Qualidade
                     </p>
 
-                    <div className="mt-4 min-h-[180px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-6 text-[#5f7f9d]">
-                      {item.observacao_qualidade || "Sem orientação registrada pela Qualidade."}
+                    <div className="mt-5 min-h-[180px] rounded-2xl border border-[#d8e9fb] bg-white p-4 text-sm leading-7 text-[#5f7f9d]">
+                      {item.observacao_qualidade ||
+                        "Sem observação registrada pela Qualidade até o momento."}
                     </div>
 
-                    <div className="mt-4">
+                    <div className="mt-5">
                       <label className="mb-2 block text-sm font-semibold text-[#32597d]">
                         Tratativa da liderança
                       </label>
                       <textarea
-                        rows={7}
+                        rows={8}
                         value={tratativas[item.id] ?? ""}
                         onChange={(e) =>
                           setTratativas((prev) => ({
@@ -457,25 +511,27 @@ export default function SistemaLiderancaPage() {
                             [item.id]: e.target.value,
                           }))
                         }
-                        placeholder="Descreva o que foi analisado, o que foi corrigido, as ações executadas e o retorno do setor."
+                        placeholder="Descreva o que foi analisado, o que foi corrigido, as ações executadas e a devolutiva formal do setor."
                         className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
                       />
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-[#e6f2ff] bg-[#fbfdff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                  <div className="rounded-[28px] border border-[#e6f2ff] bg-[#fbfdff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
                       Plano 5W2H integrado
                     </p>
 
-                    <div className="mt-4 grid gap-4">
+                    <div className="mt-5 grid gap-4">
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-[#32597d]">
                           O que será feito
                         </label>
                         <input
                           value={planoAtual.oQue}
-                          onChange={(e) => atualizarPlano(item.id, "oQue", e.target.value)}
+                          onChange={(e) =>
+                            atualizarPlano(item.id, "oQue", e.target.value)
+                          }
                           className="w-full rounded-2xl border border-[#d8e9fb] bg-white px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7]"
                         />
                       </div>
@@ -555,7 +611,7 @@ export default function SistemaLiderancaPage() {
                           Como será feito
                         </label>
                         <textarea
-                          rows={4}
+                          rows={5}
                           value={planoAtual.como}
                           onChange={(e) =>
                             atualizarPlano(item.id, "como", e.target.value)
@@ -569,7 +625,7 @@ export default function SistemaLiderancaPage() {
                       <button
                         onClick={() => handleEnviarTratativa(item)}
                         disabled={savingId === item.id}
-                        className="w-full rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {savingId === item.id
                           ? "Enviando..."
@@ -580,11 +636,11 @@ export default function SistemaLiderancaPage() {
                 </div>
 
                 {item.resposta_lideranca && (
-                  <div className="mt-6 rounded-3xl border border-[#e6f2ff] bg-[#f8fbff] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+                  <div className="mt-6 rounded-[28px] border border-[#e6f2ff] bg-[#f8fbff] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
                       Última resposta enviada
                     </p>
-                    <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-[#5f7f9d]">
+                    <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-7 text-[#5f7f9d]">
                       {item.resposta_lideranca}
                     </pre>
                   </div>
