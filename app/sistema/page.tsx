@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../src/lib/supabase";
+import LogoutButton from "../../src/components/logout-button";
 
 type Ocorrencia = {
   id: string;
@@ -113,6 +114,10 @@ export default function SistemaPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
+        <div className="mb-6 flex justify-end">
+          <LogoutButton />
+        </div>
+
         <div className="grid gap-8 xl:grid-cols-[1.4fr_0.95fr]">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
@@ -176,7 +181,8 @@ export default function SistemaPage() {
 
               <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
                 <p>
-                  A liderança <strong className="text-[#12385f]">não redireciona</strong>.
+                  A liderança{" "}
+                  <strong className="text-[#12385f]">não redireciona</strong>.
                 </p>
                 <p>
                   O direcionamento fica exclusivamente com a{" "}
