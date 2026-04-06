@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../src/lib/supabase";
+import { supabase } from "../../src/lib/supabase";
 
 type Ocorrencia = {
   id: string;
@@ -14,6 +14,8 @@ type Ocorrencia = {
   tipo_ocorrencia: string | null;
   status: string | null;
   created_at: string | null;
+  resposta_lideranca?: string | null;
+  validado_qualidade?: boolean | null;
 };
 
 function formatarData(data?: string | null) {
@@ -24,17 +26,17 @@ function formatarData(data?: string | null) {
 function getStatusClass(status?: string | null) {
   switch (status) {
     case "Em análise pela Qualidade":
-      return "bg-[#fff6db] text-[#9a6b00]";
+      return "bg-[#fff4d9] text-[#996b00]";
     case "Direcionada para Liderança":
-      return "bg-[#e8f3ff] text-[#0f5d99]";
+      return "bg-[#e8f4ff] text-[#0f5d99]";
     case "Em tratativa pela Liderança":
-      return "bg-[#eaf8ff] text-[#0077a8]";
+      return "bg-[#e7faff] text-[#0077a8]";
     case "Aguardando validação da Qualidade":
-      return "bg-[#efe9ff] text-[#6849b6]";
+      return "bg-[#efe9ff] text-[#6d4bb6]";
     case "Encerrada":
       return "bg-[#e8f8ef] text-[#1c7c4d]";
     default:
-      return "bg-[#edf4fb] text-[#52718e]";
+      return "bg-[#eef5fb] text-[#5a7590]";
   }
 }
 
@@ -43,86 +45,94 @@ export default function SistemaPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
 
   useEffect(() => {
-    let active = true;
+    let ativo = true;
 
     async function carregarResumo() {
       try {
         const { data, error } = await supabase
           .from("ocorrencias")
           .select(
-            "id, titulo, descricao, setor_origem, setor_responsavel, gravidade, tipo_ocorrencia, status, created_at"
+            `
+            id,
+            titulo,
+            descricao,
+            setor_origem,
+            setor_responsavel,
+            gravidade,
+            tipo_ocorrencia,
+            status,
+            created_at,
+            resposta_lideranca,
+            validado_qualidade
+          `
           )
           .order("created_at", { ascending: false })
-          .limit(8);
+          .limit(10);
 
         if (error) {
           console.error("Erro ao carregar ocorrências:", error);
           return;
         }
 
-        if (!active) return;
-        setOcorrencias(data ?? []);
+        if (!ativo) return;
+        setOcorrencias((data ?? []) as Ocorrencia[]);
       } catch (error) {
-        console.error("Erro inesperado:", error);
+        console.error("Erro inesperado ao carregar sistema:", error);
       } finally {
-        if (active) setLoading(false);
+        if (ativo) setLoading(false);
       }
     }
 
     carregarResumo();
 
     return () => {
-      active = false;
+      ativo = false;
     };
   }, []);
 
   const indicadores = useMemo(() => {
-    const total = ocorrencias.length;
-    const emAnalise = ocorrencias.filter(
-      (item) => item.status === "Em análise pela Qualidade"
-    ).length;
-    const emTratativa = ocorrencias.filter(
-      (item) =>
-        item.status === "Direcionada para Liderança" ||
-        item.status === "Em tratativa pela Liderança"
-    ).length;
-    const aguardandoValidacao = ocorrencias.filter(
-      (item) => item.status === "Aguardando validação da Qualidade"
-    ).length;
-    const encerradas = ocorrencias.filter(
-      (item) => item.status === "Encerrada"
-    ).length;
-
     return {
-      total,
-      emAnalise,
-      emTratativa,
-      aguardandoValidacao,
-      encerradas,
+      total: ocorrencias.length,
+      emAnalise: ocorrencias.filter(
+        (item) => item.status === "Em análise pela Qualidade"
+      ).length,
+      direcionadas: ocorrencias.filter(
+        (item) => item.status === "Direcionada para Liderança"
+      ).length,
+      emTratativa: ocorrencias.filter(
+        (item) => item.status === "Em tratativa pela Liderança"
+      ).length,
+      aguardandoValidacao: ocorrencias.filter(
+        (item) => item.status === "Aguardando validação da Qualidade"
+      ).length,
+      encerradas: ocorrencias.filter((item) => item.status === "Encerrada")
+        .length,
     };
   }, [ocorrencias]);
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f5fbff] to-white p-6 shadow-[0_20px_60px_rgba(25,118,210,0.10)]">
-        <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+      <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
+        <div className="grid gap-8 xl:grid-cols-[1.4fr_0.95fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7ea6ca]">
-              Área do sistema
-            </p>
-            <h1 className="mt-2 text-2xl font-bold text-[#10375c] sm:text-3xl">
-              Painel base do Sistema da Qualidade
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5c7b99] sm:text-base">
-              Esta é a base profissional da área autenticada, com visual
-              hospitalar limpo, navegação lateral e acesso rápido às rotinas de
-              Qualidade e Liderança, respeitando o fluxo já definido do sistema.
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
+              Painel principal
             </p>
 
-            <div className="mt-5 flex flex-wrap gap-3">
+            <h1 className="mt-3 text-3xl font-bold text-[#10375c] sm:text-4xl">
+              Sistema de Gestão da Qualidade
+            </h1>
+
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5e7d9b] sm:text-base">
+              Ambiente central da operação da Qualidade, com acesso rápido às
+              rotinas do sistema, visão resumida das ocorrências e navegação
+              estruturada para acompanhamento profissional do fluxo hospitalar.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/sistema/qualidade"
-                className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(67,153,230,0.22)] transition hover:scale-[1.01]"
+                className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01]"
               >
                 Abrir área da Qualidade
               </Link>
@@ -133,133 +143,149 @@ export default function SistemaPage() {
               >
                 Abrir área da Liderança
               </Link>
+
+              <Link
+                href="/ocorrencia/nova"
+                className="rounded-2xl border border-[#d8e9fb] bg-[#f7fbff] px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-white"
+              >
+                Registrar nova ocorrência
+              </Link>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="rounded-3xl border border-[#dfedfb] bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
                 Fluxo oficial
               </p>
-              <div className="mt-3 space-y-2 text-sm text-[#567491]">
-                <p>1. Colaborador abre ocorrência sem login</p>
+
+              <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
+                <p>1. Colaborador abre a ocorrência sem login</p>
                 <p>2. Qualidade analisa e direciona</p>
                 <p>3. Liderança trata a ocorrência</p>
-                <p>4. Liderança registra tratativa e 5W2H</p>
-                <p>5. Volta para Qualidade validar</p>
+                <p>4. Liderança registra devolutiva e 5W2H</p>
+                <p>5. Qualidade valida</p>
                 <p>6. Qualidade encerra</p>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-[#dfedfb] bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
-                Visual do projeto
+            <div className="rounded-[28px] border border-[#e3f0fb] bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Diretriz do sistema
               </p>
-              <p className="mt-3 text-sm leading-6 text-[#567491]">
-                Interface clara, azul suave, linguagem profissional e estrutura
-                pronta para crescer com páginas específicas por perfil.
-              </p>
+
+              <div className="mt-4 space-y-3 text-sm leading-6 text-[#5d7b99]">
+                <p>
+                  A liderança <strong className="text-[#12385f]">não redireciona</strong>.
+                </p>
+                <p>
+                  O direcionamento fica exclusivamente com a{" "}
+                  <strong className="text-[#12385f]">Qualidade</strong>.
+                </p>
+                <p>
+                  O frontend está alinhado ao fluxo automático já existente no banco.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Total carregado</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.total}
           </h2>
         </div>
 
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Em análise</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.emAnalise}
           </h2>
         </div>
 
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Direcionadas</p>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.direcionadas}
+          </h2>
+        </div>
+
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
           <p className="text-sm text-[#7a9bb9]">Em tratativa</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
             {indicadores.emTratativa}
           </h2>
         </div>
 
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Aguardando validação</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
-            {indicadores.aguardandoValidacao}
-          </h2>
-        </div>
-
-        <div className="rounded-3xl border border-[#deecfb] bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#7a9bb9]">Encerradas</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#12385f]">
-            {indicadores.encerradas}
+        <div className="rounded-[28px] border border-[#deecfb] bg-white p-5 shadow-sm">
+          <p className="text-sm text-[#7a9bb9]">Aguardando / encerradas</p>
+          <h2 className="mt-3 text-3xl font-bold text-[#12385f]">
+            {indicadores.aguardandoValidacao + indicadores.encerradas}
           </h2>
         </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
-        <div className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
+        <div className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
-                Últimas ocorrências
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+                Ocorrências recentes
               </p>
-              <h2 className="mt-1 text-xl font-bold text-[#12385f]">
+              <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
                 Resumo operacional
               </h2>
             </div>
 
             <Link
-              href="/ocorrencia/nova"
-              className="inline-flex items-center justify-center rounded-2xl border border-[#d8e9fb] bg-[#f7fbff] px-4 py-2.5 text-sm font-semibold text-[#275982] transition hover:bg-[#eef7ff]"
+              href="/sistema/qualidade"
+              className="inline-flex items-center justify-center rounded-2xl border border-[#d8e9fb] bg-[#f7fbff] px-4 py-2.5 text-sm font-semibold text-[#275982] transition hover:bg-white"
             >
-              Abrir nova ocorrência
+              Ir para Qualidade
             </Link>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-6 space-y-4">
             {loading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="rounded-2xl border border-[#ebf4fc] bg-[#fafcff] p-4"
-                  >
-                    <div className="h-4 w-40 animate-pulse rounded bg-[#e4f0fb]" />
-                    <div className="mt-3 h-3 w-64 animate-pulse rounded bg-[#edf5fb]" />
-                    <div className="mt-2 h-3 w-28 animate-pulse rounded bg-[#edf5fb]" />
-                  </div>
-                ))}
-              </div>
+              Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="rounded-[24px] border border-[#e7f1fb] bg-[#fbfdff] p-5"
+                >
+                  <div className="h-5 w-48 animate-pulse rounded bg-[#e7f1fb]" />
+                  <div className="mt-3 h-4 w-72 animate-pulse rounded bg-[#eef5fb]" />
+                  <div className="mt-4 h-4 w-40 animate-pulse rounded bg-[#eef5fb]" />
+                </div>
+              ))
             ) : ocorrencias.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-8 text-center">
+              <div className="rounded-[28px] border border-dashed border-[#d8e9fb] bg-[#f9fcff] p-10 text-center">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eaf5ff] text-2xl">
-                  📝
+                  📋
                 </div>
                 <h3 className="mt-4 text-lg font-semibold text-[#12385f]">
                   Nenhuma ocorrência encontrada
                 </h3>
                 <p className="mt-2 text-sm text-[#6482a0]">
-                  Assim que os registros forem sendo criados, eles aparecerão
-                  neste resumo do sistema.
+                  Assim que os registros forem criados, eles aparecerão neste
+                  painel interno.
                 </p>
               </div>
             ) : (
               ocorrencias.map((item) => (
-                <div
+                <article
                   key={item.id}
-                  className="rounded-3xl border border-[#e7f1fb] bg-[#fbfdff] p-5 transition hover:border-[#cfe4f8] hover:shadow-sm"
+                  className="rounded-[28px] border border-[#e7f1fb] bg-[#fbfdff] p-5 transition hover:border-[#d1e6f8] hover:bg-white"
                 >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-[#12385f]">
+                        <h3 className="text-lg font-bold text-[#12385f]">
                           {item.titulo || "Ocorrência sem título"}
                         </h3>
+
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
                             item.status
@@ -269,69 +295,76 @@ export default function SistemaPage() {
                         </span>
                       </div>
 
-                      <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#6482a0]">
+                      <p className="mt-3 text-sm leading-6 text-[#62809d]">
                         {item.descricao || "Sem descrição informada."}
                       </p>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {item.setor_origem && (
+                          <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                            Origem: {item.setor_origem}
+                          </span>
+                        )}
+
+                        {item.setor_responsavel && (
+                          <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
+                            Responsável: {item.setor_responsavel}
+                          </span>
+                        )}
+
+                        {item.gravidade && (
+                          <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
+                            Gravidade: {item.gravidade}
+                          </span>
+                        )}
+
+                        {item.tipo_ocorrencia && (
+                          <span className="rounded-full bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#597692]">
+                            Tipo: {item.tipo_ocorrencia}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="text-sm text-[#6f8daa] lg:text-right">
-                      <p>Abertura: {formatarData(item.created_at)}</p>
+                    <div className="text-sm text-[#6f8daa] xl:min-w-[160px] xl:text-right">
+                      <p>
+                        <strong className="text-[#32597d]">Abertura:</strong>{" "}
+                        {formatarData(item.created_at)}
+                      </p>
                     </div>
                   </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {item.setor_origem && (
-                      <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
-                        Origem: {item.setor_origem}
-                      </span>
-                    )}
-                    {item.setor_responsavel && (
-                      <span className="rounded-full bg-[#eef7ff] px-3 py-1 text-xs font-semibold text-[#4d7294]">
-                        Responsável: {item.setor_responsavel}
-                      </span>
-                    )}
-                    {item.gravidade && (
-                      <span className="rounded-full bg-[#f4f8ff] px-3 py-1 text-xs font-semibold text-[#5c6d92]">
-                        Gravidade: {item.gravidade}
-                      </span>
-                    )}
-                    {item.tipo_ocorrencia && (
-                      <span className="rounded-full bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#597692]">
-                        Tipo: {item.tipo_ocorrencia}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                </article>
               ))
             )}
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
-              Próximos módulos
+          <div className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+              Acesso rápido
             </p>
-            <h2 className="mt-1 text-xl font-bold text-[#12385f]">
-              Estrutura pronta para evolução
+
+            <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
+              Módulos do sistema
             </h2>
 
-            <div className="mt-5 space-y-4">
+            <div className="mt-6 space-y-4">
               <Link
                 href="/sistema/qualidade"
-                className="block rounded-3xl border border-[#e6f2ff] bg-[#f8fbff] p-5 transition hover:border-[#cfe4f8] hover:bg-white"
+                className="block rounded-[24px] border border-[#e6f2ff] bg-[#f8fbff] p-5 transition hover:border-[#d0e6f8] hover:bg-white"
               >
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e6f4ff] text-xl">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e5f4ff] text-xl">
                     ✅
                   </div>
+
                   <div>
-                    <h3 className="text-base font-semibold text-[#12385f]">
+                    <h3 className="text-base font-bold text-[#12385f]">
                       Área da Qualidade
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-[#6482a0]">
-                      Tela para análise, direcionamento, validação final e
-                      encerramento da ocorrência.
+                      Direcionamento, observações, validação final e encerramento.
                     </p>
                   </div>
                 </div>
@@ -339,19 +372,39 @@ export default function SistemaPage() {
 
               <Link
                 href="/sistema/lideranca"
-                className="block rounded-3xl border border-[#e6f2ff] bg-[#f8fbff] p-5 transition hover:border-[#cfe4f8] hover:bg-white"
+                className="block rounded-[24px] border border-[#e6f2ff] bg-[#f8fbff] p-5 transition hover:border-[#d0e6f8] hover:bg-white"
               >
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e6f4ff] text-xl">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e5f4ff] text-xl">
                     🩺
                   </div>
+
                   <div>
-                    <h3 className="text-base font-semibold text-[#12385f]">
+                    <h3 className="text-base font-bold text-[#12385f]">
                       Área da Liderança
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-[#6482a0]">
-                      Tela para tratativa da ocorrência, resposta da liderança e
-                      integração do 5W2H.
+                      Tratativa setorial, devolutiva da liderança e 5W2H integrado.
+                    </p>
+                  </div>
+                </div>
+              </Link>
+
+              <Link
+                href="/ocorrencia/nova"
+                className="block rounded-[24px] border border-[#e6f2ff] bg-[#f8fbff] p-5 transition hover:border-[#d0e6f8] hover:bg-white"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e5f4ff] text-xl">
+                    ➕
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-[#12385f]">
+                      Nova ocorrência
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-[#6482a0]">
+                      Registro público da ocorrência para entrada no fluxo do sistema.
                     </p>
                   </div>
                 </div>
@@ -359,31 +412,42 @@ export default function SistemaPage() {
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-[#deecfb] bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#87a7c5]">
-              Diretriz do projeto
+          <div className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+              Situação resumida
             </p>
-            <h2 className="mt-1 text-xl font-bold text-[#12385f]">
-              Regras mantidas
+
+            <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
+              Leitura rápida do fluxo
             </h2>
 
-            <div className="mt-4 space-y-3 text-sm leading-6 text-[#6482a0]">
-              <p>
-                <strong className="text-[#12385f]">Colaborador:</strong> abre a
-                ocorrência sem login.
-              </p>
-              <p>
-                <strong className="text-[#12385f]">Qualidade:</strong> analisa,
-                direciona, valida e encerra.
-              </p>
-              <p>
-                <strong className="text-[#12385f]">Liderança:</strong> não
-                redireciona; apenas trata a ocorrência e devolve para validação.
-              </p>
-              <p>
-                <strong className="text-[#12385f]">Status:</strong> automáticos
-                no banco, sem intervenção manual indevida no fluxo.
-              </p>
+            <div className="mt-6 space-y-4">
+              <div className="rounded-[24px] border border-[#eef4fa] bg-[#fbfdff] p-4">
+                <p className="text-sm font-semibold text-[#5e7c99]">
+                  Ocorrências aguardando ação da Qualidade
+                </p>
+                <p className="mt-2 text-3xl font-bold text-[#10375c]">
+                  {indicadores.emAnalise + indicadores.aguardandoValidacao}
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-[#eef4fa] bg-[#fbfdff] p-4">
+                <p className="text-sm font-semibold text-[#5e7c99]">
+                  Ocorrências em andamento na liderança
+                </p>
+                <p className="mt-2 text-3xl font-bold text-[#10375c]">
+                  {indicadores.direcionadas + indicadores.emTratativa}
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-[#eef4fa] bg-[#fbfdff] p-4">
+                <p className="text-sm font-semibold text-[#5e7c99]">
+                  Ocorrências encerradas
+                </p>
+                <p className="mt-2 text-3xl font-bold text-[#10375c]">
+                  {indicadores.encerradas}
+                </p>
+              </div>
             </div>
           </div>
         </div>
