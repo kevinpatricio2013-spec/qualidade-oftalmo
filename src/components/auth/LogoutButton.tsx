@@ -6,16 +6,20 @@ import { supabase } from "../../lib/supabase";
 export default function LogoutButton() {
   const router = useRouter();
 
-  async function sair() {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Erro ao sair:", error);
+    }
   }
 
   return (
     <button
-      onClick={sair}
-      className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+      onClick={handleLogout}
+      className="rounded-2xl border border-[#d8e9fb] bg-white px-4 py-2.5 text-sm font-semibold text-[#2d5f8b] transition hover:bg-[#f4faff]"
     >
       Sair
     </button>
