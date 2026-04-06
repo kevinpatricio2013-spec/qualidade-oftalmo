@@ -1,36 +1,19 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
-import LogoutButton from "../src/components/logout-button";
+import type { Metadata } from "next";
+import "./globals.css";
 
-export default function SistemaLayout({
+export const metadata: Metadata = {
+  title: "Gestão da Qualidade",
+  description: "Sistema hospitalar de gestão da qualidade",
+};
+
+export default function RootLayout({
   children,
-}: {
-  children: ReactNode;
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
-          <Link href="/sistema" className="block">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                Gestão da Qualidade
-              </p>
-              <h1 className="text-base font-bold text-slate-900 md:text-lg">
-                Dashboard do Sistema
-              </h1>
-            </div>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
-
-      <section className="pb-8">
-        {children}
-      </section>
-    </div>
+    <html lang="pt-BR">
+      <body>{children}</body>
+    </html>
   );
 }
