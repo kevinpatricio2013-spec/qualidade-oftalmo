@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../src/lib/supabase";
+import { useState } from "react";
+import { supabase } from "../../../src/lib/supabase";
 
 const SETORES = [
   "Agendamento",
@@ -29,499 +29,305 @@ const SETORES = [
   "Pronto Atendimento",
 ];
 
-const GRAVIDADES = ["Leve", "Moderada", "Alta", "Grave"];
-
 const TIPOS_OCORRENCIA = [
-  "Não conformidade assistencial",
-  "Não conformidade administrativa",
+  "Não conformidade",
+  "Incidente",
   "Evento adverso",
-  "Quase falha",
   "Falha de processo",
+  "Oportunidade de melhoria",
   "Reclamação",
-  "Sugestão de melhoria",
-  "Desvio de protocolo",
-  "Problema com material",
-  "Problema com medicamento",
-  "Problema com equipamento",
-  "Problema de comunicação",
-  "Problema de documentação",
-  "Problema de segurança do paciente",
-  "Outros",
+  "Desvio assistencial",
+  "Desvio administrativo",
 ];
 
-type FormData = {
-  titulo: string;
-  descricao: string;
-  setor_origem: string;
-  gravidade: string;
-  tipo_ocorrencia: string;
-};
-
-const FORM_INICIAL: FormData = {
-  titulo: "",
-  descricao: "",
-  setor_origem: "",
-  gravidade: "",
-  tipo_ocorrencia: "",
-};
+const GRAVIDADES = ["Baixa", "Média", "Alta"];
 
 export default function NovaOcorrenciaPage() {
-  const [form, setForm] = useState<FormData>(FORM_INICIAL);
-  const [loading, setLoading] = useState(false);
+  const [titulo, setTitulo] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [setorOrigem, setSetorOrigem] = useState("");
+  const [gravidade, setGravidade] = useState("");
+  const [tipoOcorrencia, setTipoOcorrencia] = useState("");
+  const [enviando, setEnviando] = useState(false);
   const [mensagem, setMensagem] = useState("");
-  const [erro, setErro] = useState("");
-
-  const podeEnviar = useMemo(() => {
-    return (
-      form.titulo.trim() &&
-      form.descricao.trim() &&
-      form.setor_origem &&
-      form.gravidade &&
-      form.tipo_ocorrencia
-    );
-  }, [form]);
-
-  function atualizarCampo<K extends keyof FormData>(campo: K, valor: FormData[K]) {
-    setForm((prev) => ({
-      ...prev,
-      [campo]: valor,
-    }));
-  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setErro("");
     setMensagem("");
 
-    if (!podeEnviar) {
-      setErro("Preencha todos os campos obrigatórios para registrar a ocorrência.");
+    if (!titulo || !descricao || !setorOrigem || !gravidade || !tipoOcorrencia) {
+      setMensagem("Preencha todos os campos obrigatórios.");
       return;
     }
 
+    setEnviando(true);
+
     try {
-      setLoading(true);
-
-      const payload = {
-        titulo: form.titulo.trim(),
-        descricao: form.descricao.trim(),
-        setor_origem: form.setor_origem,
-        gravidade: form.gravidade,
-        tipo_ocorrencia: form.tipo_ocorrencia,
-      };
-
-      const { error } = await supabase.from("ocorrencias").insert(payload);
+      const { error } = await supabase.from("ocorrencias").insert([
+        {
+          titulo,
+          descricao,
+          setor_origem: setorOrigem,
+          gravidade,
+          tipo_ocorrencia: tipoOcorrencia,
+        },
+      ]);
 
       if (error) {
-        setErro(`Erro ao criar ocorrência: ${error.message}`);
+        console.error("Erro ao criar ocorrência:", error);
+        setMensagem(`Erro ao criar ocorrência: ${error.message}`);
+        setEnviando(false);
         return;
       }
 
-      setMensagem(
-        "Ocorrência registrada com sucesso. O caso foi encaminhado para análise da Qualidade."
-      );
-      setForm(FORM_INICIAL);
-    } catch (err: any) {
-      setErro(err?.message || "Não foi possível registrar a ocorrência.");
+      setTitulo("");
+      setDescricao("");
+      setSetorOrigem("");
+      setGravidade("");
+      setTipoOcorrencia("");
+      setMensagem("Ocorrência registrada com sucesso.");
+    } catch (error) {
+      console.error("Erro inesperado:", error);
+      setMensagem("Erro inesperado ao registrar a ocorrência.");
     } finally {
-      setLoading(false);
+      setEnviando(false);
     }
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.backgroundDetailTop} />
-      <div style={styles.backgroundDetailBottom} />
+    <main className="min-h-screen bg-[#f4f9ff]">
+      <div className="mx-auto w-full max-w-[1350px] px-6 py-8 lg:px-10 lg:py-10">
+        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-[#dff1ff] to-[#eef8ff] text-3xl shadow-sm">
+              📝
+            </div>
 
-      <section style={styles.wrapper}>
-        <header style={styles.topbar}>
-          <div>
-            <div style={styles.badge}>Registro público de ocorrência</div>
-            <h1 style={styles.title}>Nova Ocorrência</h1>
-            <p style={styles.subtitle}>
-              Ambiente simples e profissional para registro de ocorrências, não
-              conformidades, eventos e oportunidades de melhoria.
-            </p>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea4c8]">
+                Registro público
+              </p>
+              <h1 className="mt-1 text-2xl font-bold text-[#10375c] sm:text-3xl">
+                Nova ocorrência
+              </h1>
+            </div>
           </div>
 
-          <div style={styles.topbarActions}>
-            <Link href="/" style={styles.secondaryButton}>
-              Voltar ao início
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/"
+              className="rounded-2xl border border-[#d8e9fb] bg-white px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+            >
+              Voltar para início
             </Link>
-            <Link href="/login" style={styles.primaryButtonLink}>
-              Acessar sistema
+
+            <Link
+              href="/login"
+              className="rounded-2xl border border-[#d8e9fb] bg-[#f7fbff] px-5 py-3 text-sm font-semibold text-[#275982] transition hover:bg-white"
+            >
+              Entrar no sistema
             </Link>
           </div>
         </header>
 
-        <section style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div>
-              <h2 style={styles.cardTitle}>Registro da ocorrência</h2>
-              <p style={styles.cardText}>
-                Preencha os dados abaixo. O direcionamento será realizado
-                posteriormente pela equipe da Qualidade.
-              </p>
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.85fr]">
+          <section className="rounded-[32px] border border-[#dcecff] bg-gradient-to-r from-[#ecf7ff] via-[#f7fbff] to-white p-6 shadow-[0_24px_80px_rgba(59,130,246,0.10)] lg:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7ea6ca]">
+              Abertura da ocorrência
+            </p>
+
+            <h2 className="mt-3 text-3xl font-bold text-[#10375c] sm:text-4xl">
+              Registro inicial para análise da Qualidade
+            </h2>
+
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[#5e7d9b] sm:text-base">
+              Utilize este formulário para registrar uma ocorrência no sistema.
+              O direcionamento do setor responsável será realizado depois pela
+              equipe da Qualidade, conforme o fluxo institucional definido.
+            </p>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-[24px] border border-[#e4effa] bg-white p-5 shadow-sm">
+                <p className="text-2xl">🔎</p>
+                <h3 className="mt-3 text-base font-bold text-[#12385f]">
+                  Análise pela Qualidade
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-[#6482a0]">
+                  Toda ocorrência entra primeiro na etapa de avaliação técnica.
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-[#e4effa] bg-white p-5 shadow-sm">
+                <p className="text-2xl">➡️</p>
+                <h3 className="mt-3 text-base font-bold text-[#12385f]">
+                  Direcionamento correto
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-[#6482a0]">
+                  O colaborador não precisa escolher o setor responsável.
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-[#e4effa] bg-white p-5 shadow-sm">
+                <p className="text-2xl">✅</p>
+                <h3 className="mt-3 text-base font-bold text-[#12385f]">
+                  Fluxo controlado
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-[#6482a0]">
+                  A liderança trata e a Qualidade valida antes do encerramento.
+                </p>
+              </div>
             </div>
+          </section>
+
+          <aside className="rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+              Orientação de preenchimento
+            </p>
+
+            <div className="mt-5 space-y-4">
+              {[
+                "Descreva a ocorrência com clareza e objetividade.",
+                "Informe o setor de origem correto.",
+                "Selecione a gravidade conforme impacto percebido.",
+                "Escolha o tipo de ocorrência mais adequado.",
+                "O setor responsável será definido pela Qualidade.",
+              ].map((item, index) => (
+                <div
+                  key={item}
+                  className="flex items-start gap-4 rounded-2xl border border-[#edf5fb] bg-[#fbfdff] p-4"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e5f4ff] text-sm font-bold text-[#0f5d99]">
+                    {index + 1}
+                  </div>
+                  <p className="text-sm font-medium leading-6 text-[#4f6f8f]">
+                    {item}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+
+        <section className="mt-6 rounded-[32px] border border-[#deecfb] bg-white p-6 shadow-sm lg:p-8">
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#84a8c9]">
+              Formulário
+            </p>
+            <h2 className="mt-2 text-2xl font-bold text-[#12385f]">
+              Informações da ocorrência
+            </h2>
           </div>
 
-          {mensagem ? <div style={styles.successBox}>{mensagem}</div> : null}
-          {erro ? <div style={styles.errorBox}>{erro}</div> : null}
-
-          <form onSubmit={handleSubmit} style={styles.form}>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Título</label>
-              <input
-                value={form.titulo}
-                onChange={(e) => atualizarCampo("titulo", e.target.value)}
-                placeholder="Descreva o assunto principal da ocorrência"
-                style={styles.input}
-              />
-            </div>
-
-            <div style={styles.gridTwo}>
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Tipo de ocorrência</label>
-                <select
-                  value={form.tipo_ocorrencia}
-                  onChange={(e) =>
-                    atualizarCampo("tipo_ocorrencia", e.target.value)
-                  }
-                  style={styles.select}
-                >
-                  <option value="">Selecione</option>
-                  {TIPOS_OCORRENCIA.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo}
-                    </option>
-                  ))}
-                </select>
+          <form onSubmit={handleSubmit} className="grid gap-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                  Título da ocorrência
+                </label>
+                <input
+                  type="text"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  placeholder="Ex.: atraso no preparo de sala"
+                  className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+                />
               </div>
 
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Gravidade</label>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                  Setor de origem
+                </label>
                 <select
-                  value={form.gravidade}
-                  onChange={(e) => atualizarCampo("gravidade", e.target.value)}
-                  style={styles.select}
+                  value={setorOrigem}
+                  onChange={(e) => setSetorOrigem(e.target.value)}
+                  className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
                 >
-                  <option value="">Selecione</option>
-                  {GRAVIDADES.map((gravidade) => (
-                    <option key={gravidade} value={gravidade}>
-                      {gravidade}
+                  <option value="">Selecione o setor</option>
+                  {SETORES.map((setor) => (
+                    <option key={setor} value={setor}>
+                      {setor}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Setor de origem</label>
-              <select
-                value={form.setor_origem}
-                onChange={(e) => atualizarCampo("setor_origem", e.target.value)}
-                style={styles.select}
-              >
-                <option value="">Selecione</option>
-                {SETORES.map((setor) => (
-                  <option key={setor} value={setor}>
-                    {setor}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Descrição</label>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                Descrição da ocorrência
+              </label>
               <textarea
-                value={form.descricao}
-                onChange={(e) => atualizarCampo("descricao", e.target.value)}
-                placeholder="Descreva a situação observada com o máximo de clareza"
-                style={styles.textarea}
+                rows={7}
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Descreva o ocorrido com o máximo de clareza possível."
+                className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm leading-7 text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
               />
             </div>
 
-            <div style={styles.infoBox}>
-              <strong>Importante:</strong> o colaborador não define setor
-              responsável. Após o registro, a ocorrência segue para análise da
-              Qualidade.
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                  Gravidade
+                </label>
+                <select
+                  value={gravidade}
+                  onChange={(e) => setGravidade(e.target.value)}
+                  className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+                >
+                  <option value="">Selecione a gravidade</option>
+                  {GRAVIDADES.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#32597d]">
+                  Tipo de ocorrência
+                </label>
+                <select
+                  value={tipoOcorrencia}
+                  onChange={(e) => setTipoOcorrencia(e.target.value)}
+                  className="w-full rounded-2xl border border-[#d8e9fb] bg-[#fbfdff] px-4 py-3 text-sm text-[#16324f] outline-none transition focus:border-[#8fc8f7] focus:bg-white"
+                >
+                  <option value="">Selecione o tipo</option>
+                  {TIPOS_OCORRENCIA.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div style={styles.actions}>
-              <Link href="/" style={styles.secondaryButton}>
-                Cancelar
-              </Link>
+            {mensagem && (
+              <div className="rounded-2xl border border-[#d8e9fb] bg-[#f7fbff] px-4 py-3 text-sm font-medium text-[#32597d]">
+                {mensagem}
+              </div>
+            )}
 
+            <div className="flex flex-wrap gap-3">
               <button
                 type="submit"
-                disabled={loading}
-                style={{
-                  ...styles.primaryButton,
-                  opacity: loading ? 0.75 : 1,
-                  cursor: loading ? "not-allowed" : "pointer",
-                }}
+                disabled={enviando}
+                className="rounded-2xl bg-gradient-to-r from-[#7fc4ff] to-[#9ad4ff] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(67,153,230,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Enviando..." : "Registrar ocorrência"}
+                {enviando ? "Enviando..." : "Registrar ocorrência"}
               </button>
+
+              <Link
+                href="/"
+                className="rounded-2xl border border-[#d8e9fb] bg-white px-6 py-3.5 text-sm font-semibold text-[#275982] transition hover:bg-[#f6fbff]"
+              >
+                Cancelar
+              </Link>
             </div>
           </form>
         </section>
-      </section>
+      </div>
     </main>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background:
-      "linear-gradient(180deg, #eef6ff 0%, #f8fbff 55%, #edf5ff 100%)",
-    position: "relative",
-    overflow: "hidden",
-    fontFamily:
-      'Inter, Arial, "Segoe UI", Roboto, Helvetica, sans-serif',
-    padding: "32px 20px 48px",
-  },
-
-  backgroundDetailTop: {
-    position: "absolute",
-    top: -120,
-    right: -120,
-    width: 280,
-    height: 280,
-    borderRadius: "50%",
-    background: "rgba(59, 130, 246, 0.10)",
-    filter: "blur(10px)",
-  },
-
-  backgroundDetailBottom: {
-    position: "absolute",
-    bottom: -100,
-    left: -100,
-    width: 240,
-    height: 240,
-    borderRadius: "50%",
-    background: "rgba(14, 165, 233, 0.10)",
-    filter: "blur(10px)",
-  },
-
-  wrapper: {
-    maxWidth: 980,
-    margin: "0 auto",
-    position: "relative",
-    zIndex: 1,
-  },
-
-  topbar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 24,
-    flexWrap: "wrap",
-    marginBottom: 24,
-  },
-
-  badge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "8px 14px",
-    borderRadius: 999,
-    background: "#dbeafe",
-    color: "#1d4ed8",
-    fontSize: 13,
-    fontWeight: 700,
-    marginBottom: 14,
-  },
-
-  title: {
-    margin: 0,
-    fontSize: 34,
-    lineHeight: 1.15,
-    color: "#0f172a",
-    fontWeight: 800,
-  },
-
-  subtitle: {
-    marginTop: 12,
-    marginBottom: 0,
-    maxWidth: 700,
-    fontSize: 15,
-    color: "#475569",
-    lineHeight: 1.7,
-  },
-
-  topbarActions: {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
-  },
-
-  card: {
-    background: "#ffffff",
-    border: "1px solid #dbeafe",
-    borderRadius: 24,
-    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.08)",
-    padding: 28,
-  },
-
-  cardHeader: {
-    marginBottom: 22,
-    borderBottom: "1px solid #e5eefb",
-    paddingBottom: 18,
-  },
-
-  cardTitle: {
-    margin: 0,
-    fontSize: 22,
-    color: "#0f172a",
-    fontWeight: 700,
-  },
-
-  cardText: {
-    marginTop: 8,
-    marginBottom: 0,
-    color: "#64748b",
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-
-  successBox: {
-    background: "#ecfeff",
-    border: "1px solid #a5f3fc",
-    color: "#155e75",
-    borderRadius: 16,
-    padding: "14px 16px",
-    marginBottom: 18,
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-
-  errorBox: {
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#b91c1c",
-    borderRadius: 16,
-    padding: "14px 16px",
-    marginBottom: 18,
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 18,
-  },
-
-  gridTwo: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 16,
-  },
-
-  fieldGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#1e293b",
-  },
-
-  input: {
-    height: 48,
-    borderRadius: 14,
-    border: "1px solid #cbd5e1",
-    padding: "0 14px",
-    fontSize: 14,
-    outline: "none",
-    background: "#ffffff",
-    color: "#0f172a",
-  },
-
-  select: {
-    height: 48,
-    borderRadius: 14,
-    border: "1px solid #cbd5e1",
-    padding: "0 14px",
-    fontSize: 14,
-    outline: "none",
-    background: "#ffffff",
-    color: "#0f172a",
-  },
-
-  textarea: {
-    minHeight: 150,
-    borderRadius: 14,
-    border: "1px solid #cbd5e1",
-    padding: "14px",
-    fontSize: 14,
-    outline: "none",
-    resize: "vertical",
-    background: "#ffffff",
-    color: "#0f172a",
-  },
-
-  infoBox: {
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: 16,
-    padding: "14px 16px",
-    color: "#1e40af",
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-
-  actions: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    marginTop: 6,
-  },
-
-  primaryButton: {
-    height: 46,
-    border: "none",
-    borderRadius: 14,
-    background: "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)",
-    color: "#ffffff",
-    padding: "0 22px",
-    fontSize: 14,
-    fontWeight: 700,
-    boxShadow: "0 10px 24px rgba(37, 99, 235, 0.20)",
-  },
-
-  primaryButtonLink: {
-    height: 46,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    background: "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)",
-    color: "#ffffff",
-    padding: "0 22px",
-    fontSize: 14,
-    fontWeight: 700,
-    textDecoration: "none",
-    boxShadow: "0 10px 24px rgba(37, 99, 235, 0.20)",
-  },
-
-  secondaryButton: {
-    height: 46,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    background: "#ffffff",
-    color: "#1d4ed8",
-    padding: "0 20px",
-    fontSize: 14,
-    fontWeight: 700,
-    textDecoration: "none",
-    border: "1px solid #bfdbfe",
-  },
-};
