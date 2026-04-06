@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sistema de Gestão da Qualidade",
@@ -12,17 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body
-        style={{
-          margin: 0,
-          padding: 0,
-          background: "#f4f8f6",
-          fontFamily: "Inter, Arial, Helvetica, sans-serif",
-          color: "#17372d",
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
