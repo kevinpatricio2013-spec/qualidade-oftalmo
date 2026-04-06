@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { supabase } from "@/src/lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 export default function LogoutButton() {
   const router = useRouter();
