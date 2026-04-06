@@ -15,7 +15,7 @@ import {
   Siren,
 } from "lucide-react";
 import { supabase } from "../src/lib/supabase";
-import type { Ocorrencia } from "@/src/types/ocorrencia";
+import type { Ocorrencia } from "../src/types/ocorrencia";
 import {
   calcularDiasAtraso,
   calcularDiasEmAberto,
@@ -24,7 +24,7 @@ import {
   statusClasses,
   traduzirStatus,
   verificarSlaVencido,
-} from "@/src/lib/qualidade";
+} from "../src/lib/qualidade";
 
 type Profile = {
   id: string;

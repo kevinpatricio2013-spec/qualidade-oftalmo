@@ -1,4 +1,4 @@
-import type { Ocorrencia } from "@/src/types/ocorrencia";
+import type { Ocorrencia } from "../types/ocorrencia";
 
 export function traduzirStatus(status?: string | null) {
   switch (status) {
