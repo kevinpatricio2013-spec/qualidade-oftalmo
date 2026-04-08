@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowRight,
   BriefcaseMedical,
   Building2,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Clock3,
   Loader2,
@@ -448,7 +448,7 @@ export default function SistemaPage() {
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-emerald-600" />
+            <ClipboardCheck className="h-5 w-5 text-emerald-600" />
             <h2 className="text-base font-semibold text-slate-900">
               Ocorrências recentes
             </h2>
