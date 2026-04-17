@@ -48,37 +48,29 @@ function formatarData(data: string | null | undefined) {
 }
 
 function getStatusLabel(status: string | null | undefined) {
-  const valor = String(status || "").trim().toUpperCase();
-
-  if (valor === "EM_ANALISE_QUALIDADE") return "Em análise pela Qualidade";
-  if (valor === "DIRECIONADA") return "Direcionada para Liderança";
-  if (valor === "EM_TRATATIVA") return "Em tratativa pela Liderança";
-  if (valor === "AGUARDANDO_VALIDACAO") return "Aguardando validação da Qualidade";
-  if (valor === "ENCERRADA" || valor === "CONCLUIDA") return "Encerrada";
-
   return status || "Sem status";
 }
 
 function getStatusClass(status: string | null | undefined) {
   const valor = String(status || "").trim().toUpperCase();
 
-  if (valor === "EM_ANALISE_QUALIDADE") {
+  if (valor === "ABERTA" || valor === "EM ANÁLISE PELA QUALIDADE") {
     return "bg-amber-50 text-amber-700 border border-amber-200";
   }
 
-  if (valor === "DIRECIONADA") {
+  if (valor === "DIRECIONADA AO SETOR") {
     return "bg-blue-50 text-blue-700 border border-blue-200";
   }
 
-  if (valor === "EM_TRATATIVA") {
+  if (valor === "EM TRATATIVA") {
     return "bg-purple-50 text-purple-700 border border-purple-200";
   }
 
-  if (valor === "AGUARDANDO_VALIDACAO") {
+  if (valor === "AGUARDANDO VALIDAÇÃO DA QUALIDADE") {
     return "bg-orange-50 text-orange-700 border border-orange-200";
   }
 
-  if (valor === "ENCERRADA" || valor === "CONCLUIDA") {
+  if (valor === "CONCLUÍDA" || valor === "CONCLUIDA") {
     return "bg-emerald-50 text-emerald-700 border border-emerald-200";
   }
 
@@ -136,10 +128,7 @@ export default function LiderancaPage() {
       const roleNormalizado = normalizarRole(profile.role);
       const setor = String(profile.setor || "").trim();
 
-      if (
-        roleNormalizado !== "LIDERANCA" &&
-        roleNormalizado !== "LIDER"
-      ) {
+      if (roleNormalizado !== "LIDERANCA" && roleNormalizado !== "LIDER") {
         throw new Error("Este usuário não possui perfil de liderança.");
       }
 
@@ -214,7 +203,7 @@ export default function LiderancaPage() {
       const payload = {
         resposta_lideranca: texto,
         data_resposta_lideranca: new Date().toISOString(),
-        status: "AGUARDANDO_VALIDACAO",
+        status: "Aguardando validação da Qualidade",
         updated_at: new Date().toISOString(),
       };
 
@@ -244,7 +233,7 @@ export default function LiderancaPage() {
       const { error } = await supabase
         .from("ocorrencias")
         .update({
-          status: "EM_TRATATIVA",
+          status: "Em tratativa",
           updated_at: new Date().toISOString(),
         })
         .eq("id", ocorrenciaId);
@@ -270,13 +259,15 @@ export default function LiderancaPage() {
   const resumo = useMemo(() => {
     const total = ocorrencias.length;
     const direcionadas = ocorrencias.filter(
-      (item) => String(item.status || "").toUpperCase() === "DIRECIONADA"
+      (item) => String(item.status || "").trim().toUpperCase() === "DIRECIONADA AO SETOR"
     ).length;
     const emTratativa = ocorrencias.filter(
-      (item) => String(item.status || "").toUpperCase() === "EM_TRATATIVA"
+      (item) => String(item.status || "").trim().toUpperCase() === "EM TRATATIVA"
     ).length;
     const aguardandoValidacao = ocorrencias.filter(
-      (item) => String(item.status || "").toUpperCase() === "AGUARDANDO_VALIDACAO"
+      (item) =>
+        String(item.status || "").trim().toUpperCase() ===
+        "AGUARDANDO VALIDAÇÃO DA QUALIDADE"
     ).length;
 
     return {
@@ -392,9 +383,11 @@ export default function LiderancaPage() {
             ) : (
               <div className="space-y-5">
                 {ocorrencias.map((ocorrencia) => {
-                  const statusAtual = String(ocorrencia.status || "").toUpperCase();
+                  const statusAtual = String(ocorrencia.status || "").trim().toUpperCase();
                   const podeIniciarTratativa =
-                    statusAtual === "DIRECIONADA" || statusAtual === "EM_ANALISE_QUALIDADE";
+                    statusAtual === "DIRECIONADA AO SETOR" ||
+                    statusAtual === "ABERTA" ||
+                    statusAtual === "EM ANÁLISE PELA QUALIDADE";
 
                   return (
                     <article

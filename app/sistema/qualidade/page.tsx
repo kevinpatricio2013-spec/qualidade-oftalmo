@@ -75,37 +75,29 @@ function formatarData(data: string | null | undefined) {
 }
 
 function getStatusLabel(status: string | null | undefined) {
-  const valor = String(status || "").trim().toUpperCase();
-
-  if (valor === "EM_ANALISE_QUALIDADE") return "Em análise pela Qualidade";
-  if (valor === "DIRECIONADA") return "Direcionada para Liderança";
-  if (valor === "EM_TRATATIVA") return "Em tratativa pela Liderança";
-  if (valor === "AGUARDANDO_VALIDACAO") return "Aguardando validação da Qualidade";
-  if (valor === "ENCERRADA" || valor === "CONCLUIDA") return "Encerrada";
-
   return status || "Sem status";
 }
 
 function getStatusClass(status: string | null | undefined) {
   const valor = String(status || "").trim().toUpperCase();
 
-  if (valor === "EM_ANALISE_QUALIDADE") {
+  if (valor === "ABERTA" || valor === "EM ANÁLISE PELA QUALIDADE") {
     return "bg-amber-50 text-amber-700 border border-amber-200";
   }
 
-  if (valor === "DIRECIONADA") {
+  if (valor === "DIRECIONADA AO SETOR") {
     return "bg-blue-50 text-blue-700 border border-blue-200";
   }
 
-  if (valor === "EM_TRATATIVA") {
+  if (valor === "EM TRATATIVA") {
     return "bg-purple-50 text-purple-700 border border-purple-200";
   }
 
-  if (valor === "AGUARDANDO_VALIDACAO") {
+  if (valor === "AGUARDANDO VALIDAÇÃO DA QUALIDADE") {
     return "bg-orange-50 text-orange-700 border border-orange-200";
   }
 
-  if (valor === "ENCERRADA" || valor === "CONCLUIDA") {
+  if (valor === "CONCLUÍDA" || valor === "CONCLUIDA") {
     return "bg-emerald-50 text-emerald-700 border border-emerald-200";
   }
 
@@ -246,7 +238,7 @@ export default function QualidadePage() {
         .from("ocorrencias")
         .update({
           setor_responsavel: setor,
-          status: "DIRECIONADA",
+          status: "Direcionada ao Setor",
           encaminhado_por_qualidade: user.id,
           updated_at: new Date().toISOString(),
         })
@@ -277,7 +269,7 @@ export default function QualidadePage() {
             validado_qualidade: true,
             data_validacao_qualidade: new Date().toISOString(),
             observacao_qualidade: observacao || null,
-            status: "ENCERRADA",
+            status: "Concluída",
             updated_at: new Date().toISOString(),
           }
         : {
@@ -285,7 +277,7 @@ export default function QualidadePage() {
             data_validacao_qualidade: null,
             observacao_qualidade:
               observacao || "Necessário complementar a tratativa antes do encerramento.",
-            status: "DIRECIONADA",
+            status: "Direcionada ao Setor",
             updated_at: new Date().toISOString(),
           };
 
@@ -314,18 +306,18 @@ export default function QualidadePage() {
 
   const resumo = useMemo(() => {
     const total = ocorrencias.length;
-    const semDirecionamento = ocorrencias.filter(
-      (item) => !item.setor_responsavel
-    ).length;
+    const semDirecionamento = ocorrencias.filter((item) => !item.setor_responsavel).length;
     const direcionadas = ocorrencias.filter(
-      (item) => String(item.status || "").toUpperCase() === "DIRECIONADA"
+      (item) => String(item.status || "").trim().toUpperCase() === "DIRECIONADA AO SETOR"
     ).length;
     const aguardandoValidacao = ocorrencias.filter(
-      (item) => String(item.status || "").toUpperCase() === "AGUARDANDO_VALIDACAO"
+      (item) =>
+        String(item.status || "").trim().toUpperCase() ===
+        "AGUARDANDO VALIDAÇÃO DA QUALIDADE"
     ).length;
     const encerradas = ocorrencias.filter((item) => {
-      const status = String(item.status || "").toUpperCase();
-      return status === "ENCERRADA" || status === "CONCLUIDA";
+      const status = String(item.status || "").trim().toUpperCase();
+      return status === "CONCLUÍDA" || status === "CONCLUIDA";
     }).length;
 
     return {
@@ -450,10 +442,11 @@ export default function QualidadePage() {
             ) : (
               <div className="space-y-5">
                 {ocorrencias.map((ocorrencia) => {
-                  const statusAtual = String(ocorrencia.status || "").toUpperCase();
-                  const aguardandoValidacao = statusAtual === "AGUARDANDO_VALIDACAO";
+                  const statusAtual = String(ocorrencia.status || "").trim().toUpperCase();
+                  const aguardandoValidacao =
+                    statusAtual === "AGUARDANDO VALIDAÇÃO DA QUALIDADE";
                   const encerrada =
-                    statusAtual === "ENCERRADA" || statusAtual === "CONCLUIDA";
+                    statusAtual === "CONCLUÍDA" || statusAtual === "CONCLUIDA";
 
                   return (
                     <article
