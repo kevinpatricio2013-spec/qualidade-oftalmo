@@ -1,397 +1,511 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "../../src/lib/supabase";
-import HistoricoOcorrencia from "../../components/HistoricoOcorrencia";
+import { supabase } from "../../../src/lib/supabase";
 
 type Ocorrencia = {
   id: number;
-  titulo: string;
-  descricao: string;
-  status: string;
+  titulo: string | null;
+  descricao: string | null;
+  tipo_ocorrencia: string | null;
+  setor_origem: string | null;
+  setor_responsavel: string | null;
+  gravidade: string | null;
+  status: string | null;
+  resposta_lideranca: string | null;
+  data_resposta_lideranca: string | null;
+  validado_qualidade: boolean | null;
+  data_validacao_qualidade: string | null;
+  observacao_qualidade: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 type HistoricoItem = {
   id: number;
-  tipo_evento: string;
-  descricao: string;
+  ocorrencia_id: number;
+  acao: string | null;
+  descricao: string | null;
   status_anterior: string | null;
   status_novo: string | null;
-  usuario: string | null;
-  origem: string | null;
-  created_at: string;
+  usuario_id: string | null;
+  criado_em: string | null;
 };
 
-type Tratativa = {
-  id: number;
-  descricao: string;
-  created_at?: string;
-};
+function formatarData(data: string | null | undefined) {
+  if (!data) return "-";
 
-type Acao5W2H = {
-  id: number;
-  o_que: string;
-  created_at?: string;
-};
+  try {
+    return new Date(data).toLocaleString("pt-BR");
+  } catch {
+    return "-";
+  }
+}
+
+function getStatusLabel(status: string | null | undefined) {
+  const valor = String(status || "").trim().toUpperCase();
+
+  if (valor === "EM_ANALISE_QUALIDADE") return "Em análise pela Qualidade";
+  if (valor === "DIRECIONADA") return "Direcionada para Liderança";
+  if (valor === "EM_TRATATIVA") return "Em tratativa pela Liderança";
+  if (valor === "AGUARDANDO_VALIDACAO") return "Aguardando validação da Qualidade";
+  if (valor === "ENCERRADA") return "Encerrada";
+
+  return status || "-";
+}
+
+function getStatusClass(status: string | null | undefined) {
+  const valor = String(status || "").trim().toUpperCase();
+
+  if (valor === "EM_ANALISE_QUALIDADE") {
+    return "border border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (valor === "DIRECIONADA") {
+    return "border border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  if (valor === "EM_TRATATIVA") {
+    return "border border-purple-200 bg-purple-50 text-purple-700";
+  }
+
+  if (valor === "AGUARDANDO_VALIDACAO") {
+    return "border border-orange-200 bg-orange-50 text-orange-700";
+  }
+
+  if (valor === "ENCERRADA") {
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  return "border border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function getGravidadeClass(gravidade: string | null | undefined) {
+  const valor = String(gravidade || "").trim().toUpperCase();
+
+  if (valor === "ALTA") {
+    return "border border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (valor === "MÉDIA" || valor === "MEDIA") {
+    return "border border-yellow-200 bg-yellow-50 text-yellow-700";
+  }
+
+  if (valor === "BAIXA") {
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  return "border border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function getAcaoLabel(acao: string | null | undefined) {
+  const valor = String(acao || "").trim().toUpperCase();
+
+  if (valor === "CRIACAO") return "Criação da ocorrência";
+  if (valor === "ALTERACAO_STATUS") return "Alteração de status";
+  if (valor === "DIRECIONAMENTO") return "Direcionamento";
+  if (valor === "RESPOSTA_LIDERANCA") return "Resposta da liderança";
+  if (valor === "VALIDACAO_QUALIDADE") return "Validação da Qualidade";
+
+  return acao || "Movimentação";
+}
+
+function getAcaoDotClass(acao: string | null | undefined) {
+  const valor = String(acao || "").trim().toUpperCase();
+
+  if (valor === "CRIACAO") return "bg-slate-500";
+  if (valor === "ALTERACAO_STATUS") return "bg-blue-500";
+  if (valor === "DIRECIONAMENTO") return "bg-indigo-500";
+  if (valor === "RESPOSTA_LIDERANCA") return "bg-purple-500";
+  if (valor === "VALIDACAO_QUALIDADE") return "bg-emerald-500";
+
+  return "bg-slate-400";
+}
 
 export default function DetalheOcorrenciaPage() {
   const params = useParams();
-  const id = Number(params?.id);
-
-  const [ocorrencia, setOcorrencia] = useState<Ocorrencia | null>(null);
-  const [historico, setHistorico] = useState<HistoricoItem[]>([]);
-  const [tratativas, setTratativas] = useState<Tratativa[]>([]);
-  const [acoes5w2h, setAcoes5w2h] = useState<Acao5W2H[]>([]);
-
-  const [novaTratativa, setNovaTratativa] = useState("");
-  const [novaAcao5w2h, setNovaAcao5w2h] = useState("");
+  const id = params?.id as string;
 
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
+  const [ocorrencia, setOcorrencia] = useState<Ocorrencia | null>(null);
+  const [historico, setHistorico] = useState<HistoricoItem[]>([]);
 
-  const [salvandoTratativa, setSalvandoTratativa] = useState(false);
-  const [salvandoAcao, setSalvandoAcao] = useState(false);
-  const [alterandoStatus, setAlterandoStatus] = useState(false);
-
-  async function carregarOcorrencia(ocorrenciaId: number) {
-    const { data, error } = await supabase
-      .from("ocorrencias")
-      .select("*")
-      .eq("id", ocorrenciaId)
-      .single();
-
-    if (error) {
-      throw new Error(`Erro ao carregar ocorrência: ${error.message}`);
-    }
-
-    if (!data) {
-      throw new Error("Ocorrência não encontrada.");
-    }
-
-    setOcorrencia(data as Ocorrencia);
-  }
-
-  async function carregarHistorico(ocorrenciaId: number) {
-    const { data, error } = await supabase
-      .from("historico_ocorrencia")
-      .select("*")
-      .eq("ocorrencia_id", ocorrenciaId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Erro ao carregar histórico:", error.message);
-      return;
-    }
-
-    setHistorico((data as HistoricoItem[]) || []);
-  }
-
-  async function carregarTratativas(ocorrenciaId: number) {
-    const { data, error } = await supabase
-      .from("tratativas_ocorrencia")
-      .select("*")
-      .eq("ocorrencia_id", ocorrenciaId)
-      .order("id", { ascending: false });
-
-    if (error) {
-      console.error("Erro ao carregar tratativas:", error.message);
-      return;
-    }
-
-    setTratativas((data as Tratativa[]) || []);
-  }
-
-  async function carregarAcoes5W2H(ocorrenciaId: number) {
-    const { data, error } = await supabase
-      .from("plano_acao_5w2h")
-      .select("*")
-      .eq("ocorrencia_id", ocorrenciaId)
-      .order("id", { ascending: false });
-
-    if (error) {
-      console.error("Erro ao carregar ações 5W2H:", error.message);
-      return;
-    }
-
-    setAcoes5w2h((data as Acao5W2H[]) || []);
-  }
-
-  async function carregarTudo(ocorrenciaId: number) {
-    setLoading(true);
-    setErro("");
-
+  async function carregarDados() {
     try {
-      await Promise.all([
-        carregarOcorrencia(ocorrenciaId),
-        carregarHistorico(ocorrenciaId),
-        carregarTratativas(ocorrenciaId),
-        carregarAcoes5W2H(ocorrenciaId),
-      ]);
-    } catch (err) {
-      const mensagem =
-        err instanceof Error ? err.message : "Erro inesperado ao carregar a ocorrência.";
-      setErro(mensagem);
+      setLoading(true);
+      setErro("");
+
+      const { data: ocorrenciaData, error: erroOcorrencia } = await supabase
+        .from("ocorrencias")
+        .select(
+          `
+            id,
+            titulo,
+            descricao,
+            tipo_ocorrencia,
+            setor_origem,
+            setor_responsavel,
+            gravidade,
+            status,
+            resposta_lideranca,
+            data_resposta_lideranca,
+            validado_qualidade,
+            data_validacao_qualidade,
+            observacao_qualidade,
+            created_at,
+            updated_at
+          `
+        )
+        .eq("id", id)
+        .single();
+
+      if (erroOcorrencia) {
+        throw new Error(erroOcorrencia.message);
+      }
+
+      const { data: historicoData, error: erroHistorico } = await supabase
+        .from("historico_ocorrencias")
+        .select(
+          `
+            id,
+            ocorrencia_id,
+            acao,
+            descricao,
+            status_anterior,
+            status_novo,
+            usuario_id,
+            criado_em
+          `
+        )
+        .eq("ocorrencia_id", id)
+        .order("criado_em", { ascending: false });
+
+      if (erroHistorico) {
+        throw new Error(erroHistorico.message);
+      }
+
+      setOcorrencia(ocorrenciaData as Ocorrencia);
+      setHistorico((historicoData || []) as HistoricoItem[]);
+    } catch (error: any) {
+      console.error("Erro ao carregar detalhe da ocorrência:", error);
+      setErro(error?.message || "Erro ao carregar ocorrência.");
+      setOcorrencia(null);
+      setHistorico([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function salvarTratativa() {
-    if (!novaTratativa.trim() || Number.isNaN(id)) return;
-
-    setSalvandoTratativa(true);
-
-    const { error } = await supabase.from("tratativas_ocorrencia").insert({
-      ocorrencia_id: id,
-      descricao: novaTratativa.trim(),
-    });
-
-    if (error) {
-      setErro(`Erro ao salvar tratativa: ${error.message}`);
-      setSalvandoTratativa(false);
-      return;
-    }
-
-    setNovaTratativa("");
-    await carregarTratativas(id);
-    await carregarHistorico(id);
-    setSalvandoTratativa(false);
-  }
-
-  async function salvar5W2H() {
-    if (!novaAcao5w2h.trim() || Number.isNaN(id)) return;
-
-    setSalvandoAcao(true);
-
-    const { error } = await supabase.from("plano_acao_5w2h").insert({
-      ocorrencia_id: id,
-      o_que: novaAcao5w2h.trim(),
-    });
-
-    if (error) {
-      setErro(`Erro ao salvar ação 5W2H: ${error.message}`);
-      setSalvandoAcao(false);
-      return;
-    }
-
-    setNovaAcao5w2h("");
-    await carregarAcoes5W2H(id);
-    await carregarHistorico(id);
-    setSalvandoAcao(false);
-  }
-
-  async function alterarStatus(novoStatus: string) {
-    if (!ocorrencia || Number.isNaN(id)) return;
-
-    setAlterandoStatus(true);
-
-    const { error } = await supabase
-      .from("ocorrencias")
-      .update({ status: novoStatus })
-      .eq("id", id);
-
-    if (error) {
-      setErro(`Erro ao alterar status: ${error.message}`);
-      setAlterandoStatus(false);
-      return;
-    }
-
-    await carregarOcorrencia(id);
-    await carregarHistorico(id);
-    setAlterandoStatus(false);
-  }
-
   useEffect(() => {
-    if (!params?.id) return;
-
-    if (Number.isNaN(id)) {
-      setErro("ID da ocorrência inválido.");
-      setLoading(false);
-      return;
+    if (id) {
+      carregarDados();
     }
+  }, [id]);
 
-    carregarTudo(id);
-  }, [params?.id, id]);
+  const resumoHistorico = useMemo(() => {
+    return {
+      total: historico.length,
+      ultimaMovimentacao: historico.length > 0 ? historico[0]?.criado_em : null,
+    };
+  }, [historico]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-lg text-slate-600">Carregando ocorrência...</p>
+      <main className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-sm text-slate-500">Carregando ocorrência...</p>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (erro) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-red-700">Não foi possível carregar a ocorrência</h1>
-          <p className="mt-3 text-sm text-slate-700">{erro}</p>
+      <main className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700 shadow-sm">
+            {erro}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (!Number.isNaN(id)) carregarTudo(id);
-            }}
-            className="mt-4 rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-          >
-            Tentar novamente
-          </button>
+          <div className="mt-4">
+            <Link
+              href="/sistema"
+              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Voltar
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (!ocorrencia) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm text-slate-600">Ocorrência não encontrada.</p>
+      <main className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-sm text-slate-600">Ocorrência não encontrada.</p>
+          </div>
+
+          <div className="mt-4">
+            <Link
+              href="/sistema"
+              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Voltar
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">
-                {ocorrencia.titulo}
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {ocorrencia.descricao}
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-emerald-700">Detalhe da Ocorrência</p>
+            <h1 className="mt-1 text-3xl font-semibold text-slate-900">
+              Gestão da Qualidade
+            </h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Visualização completa da ocorrência, tratativas e histórico de movimentações.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={carregarDados}
+              className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+            >
+              Atualizar
+            </button>
+
+            <Link
+              href="/sistema"
+              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Voltar
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <section className="space-y-6">
+            <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex flex-wrap gap-2">
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getStatusClass(
+                    ocorrencia.status
+                  )}`}
+                >
+                  {getStatusLabel(ocorrencia.status)}
+                </span>
+
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getGravidadeClass(
+                    ocorrencia.gravidade
+                  )}`}
+                >
+                  Gravidade: {ocorrencia.gravidade || "-"}
+                </span>
+
+                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                  Tipo: {ocorrencia.tipo_ocorrencia || "-"}
+                </span>
+              </div>
+
+              <h2 className="text-2xl font-semibold text-slate-900">
+                {ocorrencia.titulo || "Sem título"}
+              </h2>
+
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                {ocorrencia.descricao || "Sem descrição."}
               </p>
-            </div>
 
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">
-              Status atual: {ocorrencia.status}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => alterarStatus("Aberta")}
-              disabled={alterandoStatus}
-              className="rounded-lg bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-200 disabled:opacity-50"
-            >
-              Aberta
-            </button>
-
-            <button
-              type="button"
-              onClick={() => alterarStatus("Em análise")}
-              disabled={alterandoStatus}
-              className="rounded-lg bg-yellow-100 px-4 py-2 text-sm font-medium text-yellow-700 transition hover:bg-yellow-200 disabled:opacity-50"
-            >
-              Em análise
-            </button>
-
-            <button
-              type="button"
-              onClick={() => alterarStatus("Finalizada")}
-              disabled={alterandoStatus}
-              className="rounded-lg bg-green-100 px-4 py-2 text-sm font-medium text-green-700 transition hover:bg-green-200 disabled:opacity-50"
-            >
-              Finalizada
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-800">Tratativas</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Registre as ações imediatas e conduções adotadas para a ocorrência.
-          </p>
-
-          <textarea
-            value={novaTratativa}
-            onChange={(e) => setNovaTratativa(e.target.value)}
-            placeholder="Descreva a tratativa realizada"
-            className="mt-4 min-h-[120px] w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-700 outline-none transition focus:border-sky-500"
-          />
-
-          <button
-            type="button"
-            onClick={salvarTratativa}
-            disabled={salvandoTratativa}
-            className="mt-3 rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
-          >
-            {salvandoTratativa ? "Salvando..." : "Salvar tratativa"}
-          </button>
-
-          <div className="mt-6 space-y-3">
-            {tratativas.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                Nenhuma tratativa registrada.
-              </div>
-            ) : (
-              tratativas.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <p className="text-sm leading-6 text-slate-700">
-                    {item.descricao}
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Setor de origem
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {ocorrencia.setor_origem || "-"}
                   </p>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-800">
-            Plano de ação 5W2H
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Registre a ação estruturada vinculada à ocorrência.
-          </p>
-
-          <textarea
-            value={novaAcao5w2h}
-            onChange={(e) => setNovaAcao5w2h(e.target.value)}
-            placeholder="Descreva a ação do plano 5W2H"
-            className="mt-4 min-h-[120px] w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500"
-          />
-
-          <button
-            type="button"
-            onClick={salvar5W2H}
-            disabled={salvandoAcao}
-            className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {salvandoAcao ? "Salvando..." : "Salvar ação 5W2H"}
-          </button>
-
-          <div className="mt-6 space-y-3">
-            {acoes5w2h.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                Nenhuma ação 5W2H registrada.
-              </div>
-            ) : (
-              acoes5w2h.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <p className="text-sm leading-6 text-slate-700">
-                    {item.o_que}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Setor responsável
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {ocorrencia.setor_responsavel || "-"}
                   </p>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
 
-        <HistoricoOcorrencia historico={historico} />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Criada em
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {formatarData(ocorrencia.created_at)}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Última atualização
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {formatarData(ocorrencia.updated_at)}
+                  </p>
+                </div>
+              </div>
+            </article>
+
+            {ocorrencia.resposta_lideranca ? (
+              <article className="rounded-3xl border border-purple-200 bg-white p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Resposta da Liderança
+                  </h3>
+                </div>
+
+                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                  {ocorrencia.resposta_lideranca}
+                </p>
+
+                <p className="mt-4 text-xs text-slate-500">
+                  Registrado em: {formatarData(ocorrencia.data_resposta_lideranca)}
+                </p>
+              </article>
+            ) : null}
+
+            {ocorrencia.observacao_qualidade ? (
+              <article className="rounded-3xl border border-amber-200 bg-white p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Observação da Qualidade
+                  </h3>
+                </div>
+
+                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                  {ocorrencia.observacao_qualidade}
+                </p>
+
+                {ocorrencia.data_validacao_qualidade ? (
+                  <p className="mt-4 text-xs text-slate-500">
+                    Validação em: {formatarData(ocorrencia.data_validacao_qualidade)}
+                  </p>
+                ) : null}
+              </article>
+            ) : null}
+          </section>
+
+          <aside className="space-y-6">
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Resumo do Histórico</h3>
+
+              <div className="mt-4 grid gap-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Total de movimentações
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900">
+                    {resumoHistorico.total}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Última movimentação
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {formatarData(resumoHistorico.ultimaMovimentacao)}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Histórico da Ocorrência
+                </h3>
+              </div>
+
+              {historico.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Nenhuma movimentação registrada.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {historico.map((item, index) => (
+                    <div key={item.id} className="relative pl-8">
+                      {index !== historico.length - 1 ? (
+                        <div className="absolute left-[11px] top-7 h-[calc(100%+18px)] w-px bg-slate-200" />
+                      ) : null}
+
+                      <div
+                        className={`absolute left-0 top-1 h-[22px] w-[22px] rounded-full border-4 border-white shadow ${getAcaoDotClass(
+                          item.acao
+                        )}`}
+                      />
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {getAcaoLabel(item.acao)}
+                            </p>
+
+                            <span className="text-xs text-slate-500">
+                              {formatarData(item.criado_em)}
+                            </span>
+                          </div>
+
+                          <p className="text-sm leading-6 text-slate-600">
+                            {item.descricao || "Movimentação registrada no histórico."}
+                          </p>
+
+                          {(item.status_anterior || item.status_novo) ? (
+                            <div className="mt-1 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                              <p className="text-xs uppercase tracking-wide text-slate-400">
+                                Transição de status
+                              </p>
+
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                                  Antes: {getStatusLabel(item.status_anterior)}
+                                </span>
+
+                                <span className="text-slate-400">→</span>
+
+                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
+                                  Depois: {getStatusLabel(item.status_novo)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </aside>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
