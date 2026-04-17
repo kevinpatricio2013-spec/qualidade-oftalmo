@@ -34,6 +34,20 @@ type HistoricoItem = {
   criado_em: string | null;
 };
 
+type PlanoAcao5W2H = {
+  id?: number;
+  ocorrencia_id: number;
+  what: string | null;
+  why: string | null;
+  where_: string | null;
+  when_: string | null;
+  who_: string | null;
+  how_: string | null;
+  how_much: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 function formatarData(data: string | null | undefined) {
   if (!data) return "-";
 
@@ -129,14 +143,27 @@ export default function DetalheOcorrenciaPage() {
   const id = params?.id as string;
 
   const [loading, setLoading] = useState(true);
+  const [salvandoPlano, setSalvandoPlano] = useState(false);
   const [erro, setErro] = useState("");
+  const [mensagem, setMensagem] = useState("");
   const [ocorrencia, setOcorrencia] = useState<Ocorrencia | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
+  const [plano, setPlano] = useState<PlanoAcao5W2H>({
+    ocorrencia_id: 0,
+    what: "",
+    why: "",
+    where_: "",
+    when_: "",
+    who_: "",
+    how_: "",
+    how_much: "",
+  });
 
   async function carregarDados() {
     try {
       setLoading(true);
       setErro("");
+      setMensagem("");
 
       const { data: ocorrenciaData, error: erroOcorrencia } = await supabase
         .from("ocorrencias")
@@ -187,8 +214,45 @@ export default function DetalheOcorrenciaPage() {
         throw new Error(erroHistorico.message);
       }
 
+      const { data: planoData, error: erroPlano } = await supabase
+        .from("plano_acao_5w2h")
+        .select("*")
+        .eq("ocorrencia_id", id)
+        .maybeSingle();
+
+      if (erroPlano) {
+        throw new Error(erroPlano.message);
+      }
+
       setOcorrencia(ocorrenciaData as Ocorrencia);
       setHistorico((historicoData || []) as HistoricoItem[]);
+
+      if (planoData) {
+        setPlano({
+          id: planoData.id,
+          ocorrencia_id: Number(id),
+          what: planoData.what || "",
+          why: planoData.why || "",
+          where_: planoData.where_ || "",
+          when_: planoData.when_ || "",
+          who_: planoData.who_ || "",
+          how_: planoData.how_ || "",
+          how_much: planoData.how_much || "",
+          created_at: planoData.created_at,
+          updated_at: planoData.updated_at,
+        });
+      } else {
+        setPlano({
+          ocorrencia_id: Number(id),
+          what: "",
+          why: "",
+          where_: "",
+          when_: "",
+          who_: "",
+          how_: "",
+          how_much: "",
+        });
+      }
     } catch (error: any) {
       console.error("Erro ao carregar detalhe da ocorrência:", error);
       setErro(error?.message || "Erro ao carregar ocorrência.");
@@ -204,6 +268,64 @@ export default function DetalheOcorrenciaPage() {
       carregarDados();
     }
   }, [id]);
+
+  async function salvarPlano5W2H() {
+    try {
+      setSalvandoPlano(true);
+      setErro("");
+      setMensagem("");
+
+      const payload = {
+        ocorrencia_id: Number(id),
+        what: plano.what || null,
+        why: plano.why || null,
+        where_: plano.where_ || null,
+        when_: plano.when_ || null,
+        who_: plano.who_ || null,
+        how_: plano.how_ || null,
+        how_much: plano.how_much || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (plano.id) {
+        const { error } = await supabase
+          .from("plano_acao_5w2h")
+          .update(payload)
+          .eq("id", plano.id);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("plano_acao_5w2h")
+          .insert(payload)
+          .select("*")
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        if (data) {
+          setPlano((prev) => ({
+            ...prev,
+            id: data.id,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          }));
+        }
+      }
+
+      setMensagem("Plano de ação 5W2H salvo com sucesso.");
+      await carregarDados();
+    } catch (error: any) {
+      console.error("Erro ao salvar 5W2H:", error);
+      setErro(error?.message || "Erro ao salvar plano de ação 5W2H.");
+    } finally {
+      setSalvandoPlano(false);
+    }
+  }
 
   const resumoHistorico = useMemo(() => {
     return {
@@ -224,7 +346,7 @@ export default function DetalheOcorrenciaPage() {
     );
   }
 
-  if (erro) {
+  if (erro && !ocorrencia) {
     return (
       <main className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-6xl px-6 py-8">
@@ -252,15 +374,6 @@ export default function DetalheOcorrenciaPage() {
           <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
             <p className="text-sm text-slate-600">Ocorrência não encontrada.</p>
           </div>
-
-          <div className="mt-4">
-            <Link
-              href="/sistema"
-              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Voltar
-            </Link>
-          </div>
         </div>
       </main>
     );
@@ -276,7 +389,7 @@ export default function DetalheOcorrenciaPage() {
               Gestão da Qualidade
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Visualização completa da ocorrência, tratativas e histórico de movimentações.
+              Visualização completa da ocorrência, histórico e plano de ação 5W2H.
             </p>
           </div>
 
@@ -296,6 +409,18 @@ export default function DetalheOcorrenciaPage() {
             </Link>
           </div>
         </div>
+
+        {erro ? (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {erro}
+          </div>
+        ) : null}
+
+        {mensagem ? (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {mensagem}
+          </div>
+        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <section className="space-y-6">
@@ -408,6 +533,122 @@ export default function DetalheOcorrenciaPage() {
                 ) : null}
               </article>
             ) : null}
+
+            <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Plano de Ação 5W2H
+                </h3>
+              </div>
+
+              <p className="mb-6 text-sm text-slate-600">
+                Preencha o plano de ação da ocorrência para estruturar a tratativa de forma completa e auditável.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    What — O que será feito?
+                  </label>
+                  <textarea
+                    value={plano.what || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, what: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Why — Por que será feito?
+                  </label>
+                  <textarea
+                    value={plano.why || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, why: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Where — Onde será feito?
+                  </label>
+                  <textarea
+                    value={plano.where_ || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, where_: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    When — Quando será feito?
+                  </label>
+                  <textarea
+                    value={plano.when_ || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, when_: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Who — Quem fará?
+                  </label>
+                  <textarea
+                    value={plano.who_ || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, who_: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    How — Como será feito?
+                  </label>
+                  <textarea
+                    value={plano.how_ || ""}
+                    onChange={(e) =>
+                      setPlano((prev) => ({ ...prev, how_: e.target.value }))
+                    }
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  How much — Quanto custará?
+                </label>
+                <textarea
+                  value={plano.how_much || ""}
+                  onChange={(e) =>
+                    setPlano((prev) => ({ ...prev, how_much: e.target.value }))
+                  }
+                  className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white"
+                />
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  onClick={salvarPlano5W2H}
+                  disabled={salvandoPlano}
+                  className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {salvandoPlano ? "Salvando..." : "Salvar plano 5W2H"}
+                </button>
+              </div>
+            </article>
           </section>
 
           <aside className="space-y-6">
